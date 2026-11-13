@@ -9,25 +9,25 @@ bootstrap:
 	cd frontend && npm ci
 
 up:
-	docker compose up -d --build
+	docker-compose up -d --build
 
 down:
-	docker compose down
+	docker-compose down
 
 migrate:
-	docker compose run --rm api uv run alembic upgrade head
+	docker-compose run --rm api alembic upgrade head
 
 data-download:
-	uv run python -m backend.cli.download_data
+	docker-compose run --rm api python -m backend.cli.download_data
 
 data-import:
-	uv run python -m backend.cli.import_data
+	docker-compose run --rm api python -m backend.cli.import_data
 
 train:
-	uv run python -m backend.cli.train_model
+	uv run --group ml python -m backend.cli.train_model
 
 model-publish:
-	uv run python -m backend.cli.publish_model
+	uv run --group ml python -m backend.cli.publish_model
 
 test:
 	uv run pytest
@@ -44,10 +44,10 @@ load-test:
 	uv run python tests/performance/load.py
 
 monitoring-up:
-	docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+	docker-compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 
 build:
-	docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
 
 smoke:
 	curl --fail http://localhost:8000/health/live
