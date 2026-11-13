@@ -1,0 +1,193 @@
+from __future__ import annotations
+
+import hmac
+import uuid
+from datetime import timedelta
+from typing import Annotated
+
+import redis
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from backend.app.core.config import get_settings
+from backend.app.core.db import get_db, utcnow
+from backend.app.core.models import (
+    GenrePreference,
+    IdempotencyRecord,
+    InteractionEvent,
+    LoginSession,
+    Rating,
+    User,
+    WatchlistItem,
+)
+from backend.app.modules.identity.security import (
+    REFRESH_SECONDS,
+    hash_secret,
+    new_csrf_token,
+    new_refresh_token,
+    normalize_email,
+    password_hash,
+    password_valid,
+    sign_access_token,
+    verify_access_token,
+)
+
+router = APIRouter(tags=["identity"])
+DB = Annotated[Session, Depends(get_db)]
+
+
+class Credentials(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=12, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class Profile(BaseModel):
+    id: uuid.UUID
+    email: str
+    profile_version: int
+    genres: list[str]
+
+
+def _limit(key: str, maximum: int, window: int = 60) -> None:
+    try:
+        client = redis.Redis.from_url(get_settings().redis_url, socket_connect_timeout=1, socket_timeout=1)
+        count = client.incr(key)
+        if count == 1:
+            client.expire(key, window)
+        if count > maximum:
+            raise HTTPException(429, "Too many attempts; try again later")
+    except redis.RedisError:
+        raise HTTPException(503, "Abuse protection unavailable") from None
+
+
+def _set_cookies(response: Response, session: LoginSession, refresh: str, csrf: str) -> None:
+    secure = get_settings().cookie_secure
+    response.set_cookie("access", sign_access_token(session.id), max_age=900, httponly=True, secure=secure, samesite="lax", path="/")
+    response.set_cookie("refresh", refresh, max_age=REFRESH_SECONDS, httponly=True, secure=secure, samesite="lax", path="/api/v1/auth")
+    response.set_cookie("csrf", csrf, max_age=REFRESH_SECONDS, httponly=False, secure=secure, samesite="lax", path="/")
+
+
+def _clear_cookies(response: Response) -> None:
+    response.delete_cookie("access", path="/")
+    response.delete_cookie("refresh", path="/api/v1/auth")
+    response.delete_cookie("csrf", path="/")
+
+
+def current_session(request: Request, db: DB) -> LoginSession:
+    session_id = verify_access_token(request.cookies.get("access", ""))
+    if session_id is None:
+        raise HTTPException(401, "Authentication required")
+    session = db.get(LoginSession, session_id)
+    if session is None or session.revoked_at or session.expires_at <= utcnow():
+        raise HTTPException(401, "Authentication required")
+    return session
+
+
+SessionDep = Annotated[LoginSession, Depends(current_session)]
+
+
+def csrf_session(request: Request, session: SessionDep, x_csrf_token: Annotated[str | None, Header()] = None) -> LoginSession:
+    if not x_csrf_token or not hmac.compare_digest(hash_secret(x_csrf_token), session.csrf_hash):
+        raise HTTPException(403, "CSRF token required")
+    return session
+
+
+CsrfSession = Annotated[LoginSession, Depends(csrf_session)]
+
+
+@router.post("/auth/register", status_code=202)
+def register(credentials: Credentials, request: Request, db: DB) -> dict[str, str]:
+    _limit(f"register:{hash_secret(request.client.host if request.client else 'unknown')}", 5)
+    exists = db.scalar(select(User.id).where(User.email == credentials.email, User.deleted_at.is_(None)))
+    if not exists:
+        db.add(User(email=credentials.email, password_hash=password_hash(credentials.password)))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+    return {"message": "If this address can be registered, the account is ready to sign in."}
+
+
+@router.post("/auth/login")
+def login(credentials: Credentials, request: Request, response: Response, db: DB) -> dict[str, str]:
+    _limit(f"login:{hash_secret(request.client.host if request.client else 'unknown')}", 10)
+    user = db.scalar(select(User).where(User.email == credentials.email, User.deleted_at.is_(None)))
+    if user is None or not password_valid(user.password_hash, credentials.password):
+        raise HTTPException(401, "Invalid credentials")
+    session = LoginSession(id=uuid.uuid4(), user_id=user.id, refresh_hash="", csrf_hash="", expires_at=utcnow() + timedelta(seconds=REFRESH_SECONDS))
+    refresh, session.refresh_hash = new_refresh_token(session.id)
+    csrf, session.csrf_hash = new_csrf_token()
+    db.add(session)
+    db.commit()
+    _set_cookies(response, session, refresh, csrf)
+    return {"message": "Signed in"}
+
+
+@router.post("/auth/refresh")
+def refresh(request: Request, response: Response, db: DB, x_csrf_token: Annotated[str | None, Header()] = None) -> dict[str, str]:
+    raw = request.cookies.get("refresh", "")
+    try:
+        session_id = uuid.UUID(raw.split(".", 1)[0])
+    except ValueError:
+        raise HTTPException(401, "Authentication required") from None
+    session = db.get(LoginSession, session_id)
+    if session is None or session.revoked_at or session.expires_at <= utcnow():
+        raise HTTPException(401, "Authentication required")
+    if not hmac.compare_digest(hash_secret(raw), session.refresh_hash):
+        session.revoked_at = utcnow()
+        db.commit()
+        raise HTTPException(401, "Authentication required")
+    if not x_csrf_token or not hmac.compare_digest(hash_secret(x_csrf_token), session.csrf_hash):
+        raise HTTPException(403, "CSRF token required")
+    token, session.refresh_hash = new_refresh_token(session.id)
+    csrf, session.csrf_hash = new_csrf_token()
+    session.rotated_at = utcnow()
+    db.commit()
+    _set_cookies(response, session, token, csrf)
+    return {"message": "Session refreshed"}
+
+
+@router.post("/auth/logout")
+def logout(response: Response, session: CsrfSession, db: DB) -> dict[str, str]:
+    session.revoked_at = utcnow()
+    db.commit()
+    _clear_cookies(response)
+    return {"message": "Signed out"}
+
+
+@router.get("/me", response_model=Profile)
+def me(session: SessionDep, db: DB) -> Profile:
+    user = db.get(User, session.user_id)
+    if user is None or user.deleted_at:
+        raise HTTPException(401, "Authentication required")
+    genres = list(db.scalars(select(GenrePreference.genre).where(GenrePreference.user_id == user.id)))
+    return Profile(id=user.id, email=user.email, profile_version=user.profile_version, genres=sorted(genres))
+
+
+@router.delete("/me", status_code=204)
+def delete_account(session: CsrfSession, db: DB) -> Response:
+    user = db.get(User, session.user_id)
+    if user is None:
+        raise HTTPException(401, "Authentication required")
+    db.query(Rating).filter(Rating.user_id == user.id).delete()
+    db.query(WatchlistItem).filter(WatchlistItem.user_id == user.id).delete()
+    db.query(GenrePreference).filter(GenrePreference.user_id == user.id).delete()
+    db.query(IdempotencyRecord).filter(IdempotencyRecord.user_id == user.id).delete()
+    db.query(InteractionEvent).filter(InteractionEvent.user_id == user.id).update({"user_id": None})
+    db.query(LoginSession).filter(LoginSession.user_id == user.id).delete()
+    user.email = f"deleted-{user.id}@invalid.local"
+    user.password_hash = "deleted"
+    user.deleted_at = utcnow()
+    user.profile_version += 1
+    db.commit()
+    response = Response(status_code=204)
+    _clear_cookies(response)
+    return response
