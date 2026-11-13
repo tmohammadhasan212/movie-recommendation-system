@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.cli.download_data import verify_archive
-from backend.ml.data import movies, ratings
+from backend.ml.data import links, movies, ratings
 
 
 def test_parses_titles_and_ratings(tmp_path: Path) -> None:
@@ -18,7 +18,7 @@ def test_parses_titles_and_ratings(tmp_path: Path) -> None:
     assert parsed[1].year is None
     rating_file = tmp_path / "ratings.csv"
     rating_file.write_text("userId,movieId,rating,timestamp\n5,1,4.5,1530000000\n")
-    assert list(ratings(rating_file, {1, 2}))[0].rating == 4.5
+    assert next(ratings(rating_file, {1, 2})).rating == 4.5
 
 
 @pytest.mark.parametrize(
@@ -44,6 +44,15 @@ def test_rejects_unknown_and_invalid_rating(tmp_path: Path) -> None:
     path.write_text("userId,movieId,rating,timestamp\n5,1,4.3,1530000000\n")
     with pytest.raises(ValueError, match="invalid rating"):
         list(ratings(path, {1}))
+
+
+def test_links_allow_missing_rows_but_reject_duplicate_external_ids(tmp_path: Path) -> None:
+    path = tmp_path / "links.csv"
+    path.write_text("movieId,imdbId,tmdbId\n1,0111111,10\n")
+    assert next(links(path, {1, 2})).movie_id == 1
+    path.write_text("movieId,imdbId,tmdbId\n1,0111111,10\n2,0111111,11\n")
+    with pytest.raises(ValueError, match="duplicate or invalid external ID"):
+        list(links(path, {1, 2}))
 
 
 def test_archive_verification_rejects_path_traversal(tmp_path: Path) -> None:

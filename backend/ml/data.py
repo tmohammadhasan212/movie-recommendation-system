@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import csv
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator
 
 YEAR_PATTERN = re.compile(r"^(?P<title>.*?) \((?P<year>\d{4})\)$")
 VALID_RATINGS = {step / 2 for step in range(1, 11)}
@@ -27,6 +27,13 @@ class SourceRating:
     movie_id: int
     rating: float
     occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class SourceLink:
+    movie_id: int
+    imdb_id: str | None
+    tmdb_id: int | None
 
 
 def _rows(path: Path, headers: tuple[str, ...]) -> Iterator[dict[str, str]]:
@@ -73,7 +80,7 @@ def ratings(path: Path, known_movie_ids: set[int]) -> Iterator[SourceRating]:
             user_id = int(row["userId"])
             movie_id = int(row["movieId"])
             rating = float(row["rating"])
-            occurred_at = datetime.fromtimestamp(int(row["timestamp"]), timezone.utc)
+            occurred_at = datetime.fromtimestamp(int(row["timestamp"]), UTC)
         except (ValueError, OverflowError) as error:
             raise ValueError(f"ratings.csv:{line}: invalid numeric field") from error
         if user_id <= 0 or movie_id not in known_movie_ids:
@@ -85,3 +92,26 @@ def ratings(path: Path, known_movie_ids: set[int]) -> Iterator[SourceRating]:
             raise ValueError(f"ratings.csv:{line}: duplicate user/movie pair")
         seen.add(key)
         yield SourceRating(user_id, movie_id, rating, occurred_at)
+
+
+def links(path: Path, known_movie_ids: set[int]) -> Iterator[SourceLink]:
+    seen: set[int] = set()
+    imdb_seen: set[str] = set()
+    tmdb_seen: set[int] = set()
+    for line, row in enumerate(_rows(path, ("movieId", "imdbId", "tmdbId")), start=2):
+        try:
+            movie_id = int(row["movieId"])
+            tmdb_id = int(row["tmdbId"]) if row["tmdbId"] else None
+        except ValueError as error:
+            raise ValueError(f"links.csv:{line}: invalid ID") from error
+        imdb_id = row["imdbId"].strip() or None
+        if movie_id not in known_movie_ids or movie_id in seen:
+            raise ValueError(f"links.csv:{line}: unknown or duplicate movie ID")
+        if (imdb_id and (not imdb_id.isdigit() or imdb_id in imdb_seen)) or (tmdb_id is not None and (tmdb_id <= 0 or tmdb_id in tmdb_seen)):
+            raise ValueError(f"links.csv:{line}: duplicate or invalid external ID")
+        seen.add(movie_id)
+        if imdb_id:
+            imdb_seen.add(imdb_id)
+        if tmdb_id is not None:
+            tmdb_seen.add(tmdb_id)
+        yield SourceLink(movie_id, imdb_id, tmdb_id)
