@@ -5,31 +5,41 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SOURCE_URL = "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+CHECKSUM_URL = f"{SOURCE_URL}.md5"
 EXPECTED_FILES = {"movies.csv", "links.csv", "ratings.csv"}
 MAX_ARCHIVE_BYTES = 25 * 1024 * 1024
 MAX_EXPANDED_BYTES = 100 * 1024 * 1024
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 
-def verify_archive(path: Path, expected_sha256: str) -> dict[str, str]:
-    """Check operator-provided SHA-256 and a bounded, flat ZIP layout."""
+def verify_archive(path: Path, expected_sha256: str = "", published_md5: str = "") -> dict[str, str]:
+    """Verify an operator SHA-256 and/or the upstream MD5, then inspect ZIP layout."""
     expected_sha256 = expected_sha256.lower().strip()
-    if len(expected_sha256) != 64 or any(c not in "0123456789abcdef" for c in expected_sha256):
-        raise ValueError("Set DATA_EXPECTED_SHA256 to a verified 64-character hex digest")
+    if not expected_sha256 and not published_md5:
+        raise ValueError("No checksum available: supply DATA_EXPECTED_SHA256 or fetch upstream MD5")
+    if expected_sha256 and (len(expected_sha256) != 64 or any(c not in "0123456789abcdef" for c in expected_sha256)):
+        raise ValueError("DATA_EXPECTED_SHA256 must be a 64-character hex digest")
     if path.stat().st_size > MAX_ARCHIVE_BYTES:
         raise ValueError("MovieLens archive exceeds maximum allowed size")
-    digest = hashlib.file_digest(path.open("rb"), "sha256").hexdigest()
-    if digest != expected_sha256:
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if expected_sha256 and digest != expected_sha256:
         raise ValueError(f"SHA-256 mismatch: expected {expected_sha256}, got {digest}")
+    if published_md5:
+        with path.open("rb") as stream:
+            actual_md5 = hashlib.file_digest(stream, "md5").hexdigest()  # Upstream publishes MD5 only.
+        if actual_md5 != published_md5:
+            raise ValueError(f"Upstream MD5 mismatch: expected {published_md5}, got {actual_md5}")
     with zipfile.ZipFile(path) as archive:
         members = archive.infolist()
         names = [item.filename for item in members if not item.is_dir()]
@@ -49,13 +59,29 @@ def verify_archive(path: Path, expected_sha256: str) -> dict[str, str]:
                 raise ValueError("ZIP symlink is not allowed")
         if not EXPECTED_FILES.issubset({Path(name).name for name in names}):
             raise ValueError("MovieLens archive is missing required CSV files")
-    return {"sha256": digest, "source_url": SOURCE_URL}
+    return {"sha256": digest, "upstream_md5": published_md5, "source_url": SOURCE_URL}
+
+
+def upstream_md5() -> str:
+    request = urllib.request.Request(CHECKSUM_URL, headers={"User-Agent": "RecSys-demo/0.1"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        if response.geturl() != CHECKSUM_URL:
+            raise ValueError("Unexpected checksum redirect")
+        raw = response.read(200).decode("ascii")
+    match = re.fullmatch(r"\s*([0-9a-fA-F]{32})(?:\s+\*?ml-latest-small\.zip)?\s*", raw)
+    if match is None:
+        raise ValueError("Upstream checksum format is invalid")
+    return match.group(1).lower()
 
 
 def download() -> None:
     expected = os.environ.get("DATA_EXPECTED_SHA256", "")
-    if not expected:
-        raise SystemExit("DATA_EXPECTED_SHA256 is required; verify it independently before download")
+    try:
+        published_md5 = upstream_md5()
+    except (OSError, ValueError, urllib.error.URLError) as error:
+        if not expected:
+            raise SystemExit(f"Could not fetch upstream MD5; set independently verified DATA_EXPECTED_SHA256: {error}") from error
+        published_md5 = ""
     DATA_DIR.mkdir(exist_ok=True)
     archive_path = DATA_DIR / "ml-latest-small.zip"
     temp_path = DATA_DIR / "ml-latest-small.zip.partial"
@@ -83,7 +109,7 @@ def download() -> None:
         else:
             raise SystemExit(f"Download failed after three attempts: {last_error}")
     try:
-        provenance = verify_archive(archive_path, expected)
+        provenance = verify_archive(archive_path, expected, published_md5)
         target_dir = DATA_DIR / "ml-latest-small"
         target_dir.mkdir(exist_ok=True)
         hashes: dict[str, str] = {}
@@ -98,7 +124,7 @@ def download() -> None:
                     hashes[name] = hashlib.file_digest(source, "sha256").hexdigest()
         manifest = {
             **provenance,
-            "downloaded_at": datetime.now(timezone.utc).isoformat(),
+            "downloaded_at": datetime.now(UTC).isoformat(),
             "files": hashes,
             "parser_version": 1,
         }

@@ -71,3 +71,13 @@ def test_archive_verification_requires_checksum(tmp_path: Path) -> None:
     archive.write_bytes(b"not a zip")
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
         verify_archive(archive, "0" * 64)
+
+
+def test_archive_accepts_published_md5_and_records_sha256(tmp_path: Path) -> None:
+    archive = tmp_path / "test.zip"
+    with zipfile.ZipFile(archive, "w") as target:
+        for name in ("movies.csv", "links.csv", "ratings.csv"):
+            target.writestr(f"ml-latest-small/{name}", "header\n")
+    md5 = hashlib.md5(archive.read_bytes()).hexdigest()  # Test of upstream format.
+    result = verify_archive(archive, published_md5=md5)
+    assert result["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
