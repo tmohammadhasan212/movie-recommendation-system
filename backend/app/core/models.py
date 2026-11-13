@@ -44,6 +44,7 @@ class LoginSession(Base):
     refresh_hash: Mapped[str] = mapped_column(String(64), unique=True)
     csrf_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    authenticated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     device_label: Mapped[str | None] = mapped_column(String(100))

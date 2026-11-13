@@ -19,6 +19,7 @@ from backend.app.core.models import (
     IdempotencyRecord,
     InteractionEvent,
     LoginSession,
+    OutboxEvent,
     Rating,
     User,
     WatchlistItem,
@@ -174,6 +175,8 @@ def me(session: SessionDep, db: DB) -> Profile:
 
 @router.delete("/me", status_code=204)
 def delete_account(session: CsrfSession, db: DB) -> Response:
+    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+        raise HTTPException(403, "Sign in again before deleting your account")
     user = db.get(User, session.user_id)
     if user is None:
         raise HTTPException(401, "Authentication required")
@@ -182,6 +185,7 @@ def delete_account(session: CsrfSession, db: DB) -> Response:
     db.query(GenrePreference).filter(GenrePreference.user_id == user.id).delete()
     db.query(IdempotencyRecord).filter(IdempotencyRecord.user_id == user.id).delete()
     db.query(InteractionEvent).filter(InteractionEvent.user_id == user.id).update({"user_id": None})
+    db.query(OutboxEvent).filter(OutboxEvent.aggregate_ref == f"user:{user.id}").delete()
     db.query(LoginSession).filter(LoginSession.user_id == user.id).delete()
     user.email = f"deleted-{user.id}@invalid.local"
     user.password_hash = "deleted"
