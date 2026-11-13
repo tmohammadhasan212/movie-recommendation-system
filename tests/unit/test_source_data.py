@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.cli.download_data import verify_archive
+from backend.cli.download_data import parse_upstream_md5, verify_archive
 from backend.ml.data import links, movies, ratings
 
 
@@ -53,6 +53,12 @@ def test_links_allow_missing_rows_but_reject_duplicate_external_ids(tmp_path: Pa
     path.write_text("movieId,imdbId,tmdbId\n1,0111111,10\n2,0111111,11\n")
     with pytest.raises(ValueError, match="duplicate or invalid external ID"):
         list(links(path, {1, 2}))
+    path.write_text("movieId,imdbId,tmdbId\n1,0111111,10\n2,0222222,10\n")
+    with pytest.raises(ValueError, match="duplicate or invalid external ID"):
+        list(links(path, {1, 2}))
+    resolved = list(links(path, {1, 2}, omit_ambiguous_tmdb=True))
+    assert [link.tmdb_id for link in resolved] == [None, None]
+    assert all(link.ambiguous_tmdb for link in resolved)
 
 
 def test_archive_verification_rejects_path_traversal(tmp_path: Path) -> None:
@@ -81,3 +87,7 @@ def test_archive_accepts_published_md5_and_records_sha256(tmp_path: Path) -> Non
     md5 = hashlib.md5(archive.read_bytes()).hexdigest()  # Test of upstream format.
     result = verify_archive(archive, published_md5=md5)
     assert result["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+
+
+def test_parses_actual_grouplens_checksum_format() -> None:
+    assert parse_upstream_md5("MD5 (ml-latest-small.zip) = 31a303aabbc519bd33d025e44d6c2570\n") == "31a303aabbc519bd33d025e44d6c2570"

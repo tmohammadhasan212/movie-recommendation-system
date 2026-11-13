@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ class SourceLink:
     movie_id: int
     imdb_id: str | None
     tmdb_id: int | None
+    ambiguous_tmdb: bool = False
 
 
 def _rows(path: Path, headers: tuple[str, ...]) -> Iterator[dict[str, str]]:
@@ -94,11 +96,13 @@ def ratings(path: Path, known_movie_ids: set[int]) -> Iterator[SourceRating]:
         yield SourceRating(user_id, movie_id, rating, occurred_at)
 
 
-def links(path: Path, known_movie_ids: set[int]) -> Iterator[SourceLink]:
+def links(path: Path, known_movie_ids: set[int], *, omit_ambiguous_tmdb: bool = False) -> Iterator[SourceLink]:
+    rows = list(_rows(path, ("movieId", "imdbId", "tmdbId")))
+    tmdb_counts = Counter(row["tmdbId"] for row in rows if row["tmdbId"])
     seen: set[int] = set()
     imdb_seen: set[str] = set()
     tmdb_seen: set[int] = set()
-    for line, row in enumerate(_rows(path, ("movieId", "imdbId", "tmdbId")), start=2):
+    for line, row in enumerate(rows, start=2):
         try:
             movie_id = int(row["movieId"])
             tmdb_id = int(row["tmdbId"]) if row["tmdbId"] else None
@@ -107,11 +111,14 @@ def links(path: Path, known_movie_ids: set[int]) -> Iterator[SourceLink]:
         imdb_id = row["imdbId"].strip() or None
         if movie_id not in known_movie_ids or movie_id in seen:
             raise ValueError(f"links.csv:{line}: unknown or duplicate movie ID")
-        if (imdb_id and (not imdb_id.isdigit() or imdb_id in imdb_seen)) or (tmdb_id is not None and (tmdb_id <= 0 or tmdb_id in tmdb_seen)):
+        if (imdb_id and (not imdb_id.isdigit() or imdb_id in imdb_seen)) or (tmdb_id is not None and (tmdb_id <= 0 or (tmdb_id in tmdb_seen and not omit_ambiguous_tmdb))):
             raise ValueError(f"links.csv:{line}: duplicate or invalid external ID")
+        ambiguous_tmdb = bool(row["tmdbId"] and tmdb_counts[row["tmdbId"]] > 1)
+        if ambiguous_tmdb and omit_ambiguous_tmdb:
+            tmdb_id = None
         seen.add(movie_id)
         if imdb_id:
             imdb_seen.add(imdb_id)
         if tmdb_id is not None:
             tmdb_seen.add(tmdb_id)
-        yield SourceLink(movie_id, imdb_id, tmdb_id)
+        yield SourceLink(movie_id, imdb_id, tmdb_id, ambiguous_tmdb)

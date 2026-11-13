@@ -51,8 +51,8 @@ def import_data() -> dict[str, int]:
     if not catalog:
         raise ValueError("Movie catalog is unexpectedly empty")
     known = {movie.movie_id for movie in catalog}
-    external = {link.movie_id: link for link in links(root / "links.csv", known)}
-    counts = {"movies": 0, "links": len(external), "ratings": 0}
+    external = {link.movie_id: link for link in links(root / "links.csv", known, omit_ambiguous_tmdb=True)}
+    counts = {"movies": 0, "links": len(external), "ratings": 0, "ambiguous_tmdb_rows": sum(link.ambiguous_tmdb for link in external.values())}
     with SessionLocal.begin() as db:
         for batch in _batches(catalog):
             values = [

@@ -8,4 +8,6 @@ The source has `movies.csv`, `links.csv`, `ratings.csv`, and `tags.csv`. The app
 
 `make data-import` checks local file hashes, validates headers and rows, upserts catalog and source ratings in one transaction, and records counts. Rerunning does not duplicate records. The actual downloaded checksum, date, and counts belong in the local manifest and implementation log after an import has run. Historical MovieLens rating count is only a catalog popularity proxy. The "latest" dataset can change and is not a stable research benchmark.
 
+The current archive has one duplicate TMDB ID affecting two rows. The import omits those optional IDs and records `ambiguous_tmdb_rows`; see [ADR 0002](decisions/0002-ambiguous-tmdb-links.md). Strict link parsing still rejects duplicate IDs by default.
+
 Citation: Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. *ACM Transactions on Interactive Intelligent Systems*, 5(4), 19:1–19:19.
