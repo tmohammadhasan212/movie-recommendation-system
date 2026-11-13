@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
-import { getGenres, getMovie, getMovies, type Movie } from '../lib/api';
+import { addWatchlist, getGenres, getMovie, getMovies, getRatings, getSimilar, getWatchlist, removeRating, removeWatchlist, setRating, type Movie } from '../lib/api';
+import { AccountPage, AuthPage, GenresPage, useProfile } from '../features/account';
+import { RecommendationsPage } from '../features/recommendations';
 
 const posterColors = ['#7d526a', '#546f75', '#9b674d', '#5e647a', '#817b4f'];
 
@@ -52,10 +54,26 @@ function Detail() {
   return <main className="container detail"><Link className="back" to="/">← Back to discovery</Link>
     {movie.isLoading && <p role="status">Loading movie…</p>}
     {movie.isError && <p role="alert">Could not load this movie: {movie.error.message}</p>}
-    {movie.data && <div className="detail-layout"><div className="poster large" style={{ background: posterColors[movie.data.id % posterColors.length] }} aria-hidden="true">{movie.data.title.slice(0, 1).toUpperCase()}</div><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p className="metadata-note">MovieLens provides titles and genres. A poster, synopsis, and cast are not available in this dataset.</p></div></div>}
+    {movie.data && <><div className="detail-layout"><div className="poster large" style={{ background: posterColors[movie.data.id % posterColors.length] }} aria-hidden="true">{movie.data.title.slice(0, 1).toUpperCase()}</div><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p className="metadata-note">MovieLens provides titles and genres. A poster, synopsis, and cast are not available in this dataset.</p><MovieActions movieId={movie.data.id} /></div></div><SimilarMovies movieId={movie.data.id} /></>}
   </main>;
 }
 
+function MovieActions({ movieId }: { movieId: number }) {
+  const profile = useProfile();
+  const ratings = useQuery({ queryKey: ['ratings'], queryFn: getRatings, enabled: !!profile.data });
+  const watchlist = useQuery({ queryKey: ['watchlist'], queryFn: getWatchlist, enabled: !!profile.data });
+  const queryClient = useQueryClient();
+  const [error, setError] = useState('');
+  const rating = ratings.data?.find(item => item.movie_id === movieId)?.rating ?? 0;
+  const saved = watchlist.data?.includes(movieId) ?? false;
+  const updateRating = useMutation({ mutationFn: async (value: number) => { if (value) await setRating(movieId, value); else await removeRating(movieId); }, onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['ratings'] }); queryClient.invalidateQueries({ queryKey: ['recommendations'] }); queryClient.invalidateQueries({ queryKey: ['me'] }); }, onError: cause => setError(cause.message) });
+  const updateWatchlist = useMutation({ mutationFn: () => saved ? removeWatchlist(movieId) : addWatchlist(movieId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['watchlist'] }); queryClient.invalidateQueries({ queryKey: ['recommendations'] }); }, onError: cause => setError(cause.message) });
+  if (!profile.data) return <p><Link className="inline-link" to="/auth">Sign in</Link> to rate or save this movie.</p>;
+  return <div className="movie-actions"><label>Your rating <select value={rating} disabled={updateRating.isPending} onChange={event => { setError(''); updateRating.mutate(Number(event.target.value)); }}><option value={0}>Not rated</option>{Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map(value => <option value={value} key={value}>{value} stars</option>)}</select></label><button disabled={updateWatchlist.isPending} onClick={() => { setError(''); updateWatchlist.mutate(); }}>{saved ? 'Remove from watchlist' : 'Add to watchlist'}</button>{error && <p role="alert" className="form-error">{error}</p>}</div>;
+}
+
+function SimilarMovies({ movieId }: { movieId: number }) { const similar = useQuery({ queryKey: ['similar', movieId], queryFn: () => getSimilar(movieId) }); return <section className="similar"><h2>Similar movies</h2>{similar.isLoading && <p role="status">Loading similar movies…</p>}{similar.isError && <p role="alert">Similar movies are unavailable.</p>}<div className="similar-list">{similar.data?.items.map(item => <Link key={item.movie.id} to={`/movies/${item.movie.id}`}>{item.movie.title}</Link>)}</div></section>; }
+
 function Credits() { return <main className="container prose"><p className="eyebrow">Attribution</p><h1>Credits & data</h1><p>This non-commercial demo uses the MovieLens ml-latest-small dataset from GroupLens Research at the University of Minnesota. MovieLens data has separate terms from this project's source code. GroupLens does not endorse this project.</p><p>Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems, 5(4), 19:1–19:19.</p><p><a href="https://grouplens.org/datasets/movielens/latest/">Dataset information and terms</a></p></main>; }
 
-export default function App() { return <><header className="site-header"><div className="container header-inner"><Link className="brand" to="/">recsys<span>✦</span></Link><nav aria-label="Main navigation"><NavLink to="/">Discover</NavLink><NavLink to="/credits">Credits</NavLink></nav></div></header><Routes><Route path="/" element={<Discovery />} /><Route path="/movies/:id" element={<Detail />} /><Route path="/credits" element={<Credits />} /></Routes><footer className="site-footer"><div className="container">A non-commercial MovieLens demo · <Link to="/credits">Data credits</Link></div></footer></>; }
+export default function App() { return <><header className="site-header"><div className="container header-inner"><Link className="brand" to="/">recsys<span>✦</span></Link><nav aria-label="Main navigation"><NavLink to="/">Discover</NavLink><NavLink to="/for-you">For you</NavLink><NavLink to="/credits">Credits</NavLink><NavLink to="/account">Account</NavLink></nav></div></header><Routes><Route path="/" element={<Discovery />} /><Route path="/movies/:id" element={<Detail />} /><Route path="/for-you" element={<RecommendationsPage />} /><Route path="/genres" element={<GenresPage />} /><Route path="/auth" element={<AuthPage />} /><Route path="/account" element={<AccountPage />} /><Route path="/credits" element={<Credits />} /></Routes><footer className="site-footer"><div className="container">A non-commercial MovieLens demo · <Link to="/credits">Data credits</Link></div></footer></>; }
