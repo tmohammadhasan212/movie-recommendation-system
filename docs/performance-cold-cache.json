@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-11-14T13:57:23.016380+00:00",
+  "base_url": "http://localhost:8000",
+  "scenario": "single simultaneous preconnected anonymous recommendation burst after key deletion",
+  "concurrency": 50,
+  "machine": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "logical_cpus": 12
+  },
+  "requests": 50,
+  "errors": 0,
+  "error_rate": 0.0,
+  "latency_ms": {
+    "mean": 208.6477641199599,
+    "p50": 210.7165420002275,
+    "p95": 233.41995800001314,
+    "p99": 234.33658400062995
+  }
+}

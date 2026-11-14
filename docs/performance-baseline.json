@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-11-14T13:36:51.668633+00:00",
+  "base_url": "http://localhost:8000",
+  "duration_seconds": 300.2258783750003,
+  "concurrency": 50,
+  "requests": 6050,
+  "throughput_rps": 20.151494044238195,
+  "errors": 0,
+  "error_rate": 0.0,
+  "latency_ms": {
+    "mean": 1465.5545140156964,
+    "p50": 1407.7379169993947,
+    "p95": 2483.143417000065,
+    "p99": 2805.7443750003586
+  },
+  "bottleneck": "Recommendation requests recomputed MovieLens aggregates over 100836 imported ratings on every request."
+}

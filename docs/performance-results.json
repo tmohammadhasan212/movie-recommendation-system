@@ -1,0 +1,60 @@
+{
+  "recorded_at": "2026-11-14T13:45:57.899403+00:00",
+  "base_url": "http://localhost:8000",
+  "duration_seconds": 300.0357209169997,
+  "concurrency": 50,
+  "machine": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "logical_cpus": 12
+  },
+  "overall": {
+    "requests": 90450,
+    "throughput_rps": 301.4641047524525,
+    "errors": 0,
+    "error_rate": 0.0,
+    "latency_ms": {
+      "mean": 111.66023634936673,
+      "p50": 109.4014589998551,
+      "p95": 161.38429199963866,
+      "p99": 181.71966600039013
+    }
+  },
+  "routes": {
+    "/api/v1/movies?limit=20": {
+      "requests": 30150,
+      "throughput_rps": 100.48803491748416,
+      "errors": 0,
+      "error_rate": 0.0,
+      "latency_ms": {
+        "mean": 110.36452524703618,
+        "p50": 108.77766700014035,
+        "p95": 157.7262079999855,
+        "p99": 178.23158300052455
+      }
+    },
+    "/api/v1/movies?q=toy&limit=20": {
+      "requests": 30150,
+      "throughput_rps": 100.48803491748416,
+      "errors": 0,
+      "error_rate": 0.0,
+      "latency_ms": {
+        "mean": 124.51471756743166,
+        "p50": 127.83525000031659,
+        "p95": 170.16100000000733,
+        "p99": 187.7946669992525
+      }
+    },
+    "/api/v1/recommendations?limit=20": {
+      "requests": 30150,
+      "throughput_rps": 100.48803491748416,
+      "errors": 0,
+      "error_rate": 0.0,
+      "latency_ms": {
+        "mean": 100.10146623363235,
+        "p50": 96.86212499946123,
+        "p95": 149.75874999981897,
+        "p99": 169.61587500009045
+      }
+    }
+  }
+}
