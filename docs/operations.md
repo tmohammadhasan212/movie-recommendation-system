@@ -2,7 +2,14 @@
 
 Check `docker-compose ps -a`, then `/health/ready`. Inspect API, worker, and scheduler logs with `docker-compose logs --tail=200 api worker scheduler`. Prometheus is at `localhost:9090` and Grafana at `localhost:3000` after `make monitoring-up`.
 
-For stuck events, query `outbox_events` by status and `next_attempt_at`. A dead-letter replay tool is not implemented yet; after fixing the cause, an operator may transactionally set a reviewed row back to `pending`, clear `error_code`, and set `next_attempt_at=now()`. Never bulk replay without checking consumer idempotency.
+For stuck events, inspect `outbox_events` by status and `next_attempt_at`. List dead letters without exposing their payloads with `make outbox-replay ARGS="--list"`. After fixing the cause, dry-run exact event IDs first:
+
+```bash
+make outbox-replay ARGS="--event-id <uuid>"
+make outbox-replay ARGS="--event-id <uuid> --apply --reason 'broker incident resolved'"
+```
+
+The command locks and validates the entire batch, refuses missing, non-dead-letter, duplicate, or already-processed events, and caps a replay at 100 IDs. Applying resets delivery attempts and schedules immediate dispatch in one transaction. The prior attempt count, error code, reason, and timestamp remain in `outbox_replays`. Never replay an event until its failure cause and consumer idempotency have been reviewed.
 
 Model rollback is an atomic database update: mark the current row inactive and the prior validated version active in one transaction, then restart API replicas or wait for a version reload. Keep at least two immutable artifact directories. A missing/corrupt active artifact safely falls back but should alert.
 

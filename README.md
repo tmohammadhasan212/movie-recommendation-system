@@ -8,7 +8,7 @@ RecSys is a production-oriented movie recommendation portfolio project. It runs 
 - Catalog search, genre filtering, detail and similar-movie pages
 - Optional TMDB poster enrichment with lazy images and deterministic placeholders
 - Argon2id accounts, secure session rotation and renewal, CSRF, rate limits, export and deletion
-- Genres, ratings, watchlist, consented events, transactional outbox and idempotent worker
+- Genres, ratings, watchlist, consented events, transactional outbox, idempotent worker, and audited dead-letter replay
 - Popularity/genre cold start plus a published matrix-factorization hybrid for app users
 - Versioned five-minute recommendation caching with cold-miss coalescing
 - JSON request logs, live-state Prometheus metrics, Grafana dashboard and alert rules

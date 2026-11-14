@@ -1,9 +1,9 @@
-.PHONY: help bootstrap up down migrate data-download data-import metadata-enrich train model-publish test test-e2e lint load-test monitoring-up build smoke
+.PHONY: help bootstrap up down migrate data-download data-import metadata-enrich train model-publish outbox-replay test test-e2e lint load-test monitoring-up build smoke
 
 export UV_CACHE_DIR ?= $(CURDIR)/.uv-cache
 
 help:
-	@echo 'bootstrap up down migrate data-download data-import metadata-enrich train model-publish test test-e2e lint load-test monitoring-up build smoke'
+	@echo 'bootstrap up down migrate data-download data-import metadata-enrich train model-publish outbox-replay test test-e2e lint load-test monitoring-up build smoke'
 
 bootstrap:
 	@test -f .env || cp .env.example .env
@@ -33,6 +33,9 @@ train:
 
 model-publish:
 	docker-compose run --rm api python -m backend.cli.publish_model
+
+outbox-replay:
+	docker-compose run --rm api python -m backend.cli.replay_dead_letters $(ARGS)
 
 test:
 	uv run pytest

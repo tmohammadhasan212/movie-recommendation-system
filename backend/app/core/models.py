@@ -67,6 +67,12 @@ class Movie(Base):
     source_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (
         Index("ix_movies_title_lower", func.lower(title)),
+        Index(
+            "ix_movies_title_trgm",
+            func.lower(title).label("title_lower"),
+            postgresql_using="gin",
+            postgresql_ops={"title_lower": "gin_trgm_ops"},
+        ),
         Index("ix_movies_genres_gin", genres, postgresql_using="gin"),
     )
 
@@ -128,6 +134,18 @@ class OutboxEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(60))
+
+
+class OutboxReplay(Base):
+    __tablename__ = "outbox_replays"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("outbox_events.id", ondelete="CASCADE"), index=True
+    )
+    reason: Mapped[str] = mapped_column(String(500))
+    previous_attempt_count: Mapped[int] = mapped_column(Integer)
+    previous_error_code: Mapped[str | None] = mapped_column(String(60))
+    replayed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ProcessedEvent(Base):
