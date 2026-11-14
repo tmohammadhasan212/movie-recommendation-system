@@ -6,6 +6,7 @@ RecSys is a production-oriented movie recommendation portfolio project. It runs 
 
 - Checksum-verified, idempotent import of 9,742 movies and 100,836 ratings from MovieLens `ml-latest-small`
 - Catalog search, genre filtering, detail and similar-movie pages
+- Optional TMDB poster enrichment with lazy images and deterministic placeholders
 - Argon2id accounts, secure session rotation, CSRF, rate limits, export and deletion
 - Genres, ratings, watchlist, consented events, transactional outbox and idempotent worker
 - Popularity/genre cold start plus a published matrix-factorization hybrid for app users
@@ -21,12 +22,14 @@ make bootstrap
 make up
 make data-download
 make data-import
+# Optional: set TMDB_API_TOKEN in .env, then enrich a bounded batch.
+make metadata-enrich
 make train
 make model-publish
 make smoke
 ```
 
-Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs` in development. Raw data, local manifests, secrets, and model binaries are ignored by Git.
+Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs` in development. Raw data, local manifests, secrets, and model binaries are ignored by Git. Poster enrichment is optional and never runs during startup or import. Each `make metadata-enrich` run refreshes at most 250 stale TMDB-linked movies; rerun it to continue through the catalog.
 
 ## Stack versions
 
@@ -34,7 +37,7 @@ Direct Python and npm dependencies are exactly pinned in `pyproject.toml`, `uv.l
 
 ## Data rights
 
-This is a non-commercial demo. MovieLens data has separate terms from the MIT-licensed project source. GroupLens does not endorse this project. See [data provenance and rights](docs/data.md) and the in-app Credits page.
+This is a non-commercial demo. MovieLens data has separate terms from the MIT-licensed project source. GroupLens does not endorse this project. Optional poster paths and remotely served images come from TMDB under its separate API terms and attribution requirements. See [data provenance and rights](docs/data.md) and the in-app Credits page.
 
 ## Recommendation evidence
 

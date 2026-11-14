@@ -1,9 +1,9 @@
-.PHONY: help bootstrap up down migrate data-download data-import train model-publish test test-e2e lint load-test monitoring-up build smoke
+.PHONY: help bootstrap up down migrate data-download data-import metadata-enrich train model-publish test test-e2e lint load-test monitoring-up build smoke
 
 export UV_CACHE_DIR ?= $(CURDIR)/.uv-cache
 
 help:
-	@echo 'bootstrap up down migrate data-download data-import train model-publish test test-e2e lint load-test monitoring-up build smoke'
+	@echo 'bootstrap up down migrate data-download data-import metadata-enrich train model-publish test test-e2e lint load-test monitoring-up build smoke'
 
 bootstrap:
 	@test -f .env || cp .env.example .env
@@ -24,6 +24,9 @@ data-download:
 
 data-import:
 	docker-compose run --rm api python -m backend.cli.import_data
+
+metadata-enrich:
+	docker-compose run --rm api python -m backend.cli.enrich_metadata
 
 train:
 	uv run --group ml python -m backend.cli.train_model

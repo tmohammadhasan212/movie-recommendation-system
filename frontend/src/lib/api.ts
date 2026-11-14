@@ -4,6 +4,8 @@ export interface Movie {
   release_year: number | null;
   genres: string[];
   source: string;
+  poster_url: string | null;
+  poster_source: string | null;
 }
 
 export interface MoviePage {

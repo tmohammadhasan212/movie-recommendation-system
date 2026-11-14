@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+test('credits display the required TMDB attribution', async ({ page }) => {
+  await page.goto('/credits');
+
+  await expect(page.getByRole('heading', { name: 'Credits & data' })).toBeVisible();
+  await expect(page.getByAltText('TMDB')).toBeVisible();
+  await expect(page.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.')).toBeVisible();
+});
+
 test('registered user can personalize, rate, save, sign back in, and delete account', async ({ page }) => {
   const email = `browser-${Date.now()}@example.test`;
   const password = 'correct horse battery staple';

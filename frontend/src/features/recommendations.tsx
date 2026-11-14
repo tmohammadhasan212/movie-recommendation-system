@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { MoviePoster } from '../components/MoviePoster';
 import { getRecommendations } from '../lib/api';
 import { useProfile } from './account';
 
@@ -19,6 +20,6 @@ export function RecommendationsPage() {
     {feed.isLoading && <p role="status">Finding suggestions…</p>}
     {feed.isError && <p role="alert">Could not load suggestions: {feed.error.message}</p>}
     {feed.data?.items.length === 0 && <p>No suggestions yet. The catalog may need to be imported.</p>}
-    <div className="suggestions">{feed.data?.items.map(item => <article key={item.movie.id} className="suggestion"><div><Link to={`/movies/${item.movie.id}`}><h2>{item.movie.title}</h2></Link><p>{item.movie.release_year ?? 'Year unknown'} · {item.movie.genres.join(', ') || 'Genre unknown'}</p></div><span>{explanations[item.explanation_code] ?? 'Catalog suggestion'}</span></article>)}</div>
+    <div className="suggestions">{feed.data?.items.map(item => <article key={item.movie.id} className="suggestion"><Link to={`/movies/${item.movie.id}`}><MoviePoster movie={item.movie} size="thumb" /></Link><div><Link to={`/movies/${item.movie.id}`}><h2>{item.movie.title}</h2></Link><p>{item.movie.release_year ?? 'Year unknown'} · {item.movie.genres.join(', ') || 'Genre unknown'}</p></div><span>{explanations[item.explanation_code] ?? 'Catalog suggestion'}</span></article>)}</div>
   </main>;
 }

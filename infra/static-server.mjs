@@ -23,7 +23,7 @@ createServer((request, response) => {
   }
   response.setHeader("Content-Type", types[extname(target)] ?? "application/octet-stream");
   response.setHeader("X-Content-Type-Options", "nosniff");
-  response.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data: https://image.tmdb.org https://www.themoviedb.org; style-src 'self'; script-src 'self'");
   response.setHeader("Cache-Control", target.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable");
   createReadStream(target).pipe(response);
 }).listen(8080, "0.0.0.0");

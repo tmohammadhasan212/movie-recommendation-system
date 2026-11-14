@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.api.v1.catalog import MovieResponse
+from backend.app.api.v1.catalog import MovieResponse, movie_response
 from backend.app.core.cache import get_or_reserve as cache_get_or_reserve
 from backend.app.core.cache import set_value as cache_set
 from backend.app.core.db import get_db, utcnow
@@ -185,7 +185,7 @@ def recommendations(
             scored.sort(key=lambda row: (-row[0], row[1]))
             items = [
                 RecommendationItem(
-                    movie=MovieResponse.model_validate(movie_map[movie_id]),
+                    movie=movie_response(movie_map[movie_id]),
                     source="hybrid_model",
                     explanation_code="similar_to_high_ratings",
                 )
@@ -203,7 +203,7 @@ def recommendations(
     response = RecommendationFeed(
         items=[
             RecommendationItem(
-                movie=MovieResponse.model_validate(movie_map[item.movie_id]),
+                movie=movie_response(movie_map[item.movie_id]),
                 source=item.source,
                 explanation_code=item.explanation_code,
             )
@@ -246,7 +246,7 @@ def similar(movie_id: int, db: DB, limit: int = Query(12, ge=1, le=100)) -> Reco
     return RecommendationFeed(
         items=[
             RecommendationItem(
-                movie=MovieResponse.model_validate(movie_map[other_id]),
+                movie=movie_response(movie_map[other_id]),
                 source=source_name,
                 explanation_code="shared_genres",
             )

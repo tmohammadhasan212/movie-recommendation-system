@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import get_settings
 from backend.app.core.db import get_db
 from backend.app.core.models import Movie
 from backend.app.modules.catalog.service import list_movies
@@ -19,8 +21,28 @@ class MovieResponse(BaseModel):
     release_year: int | None
     genres: list[str]
     source: str
+    poster_url: str | None
+    poster_source: str | None
 
     model_config = {"from_attributes": True}
+
+
+POSTER_PATH = re.compile(r"^/[A-Za-z0-9_.-]{1,199}$")
+
+
+def movie_response(movie: Movie) -> MovieResponse:
+    poster_url = None
+    if movie.poster_source == "TMDB" and movie.poster_path and POSTER_PATH.fullmatch(movie.poster_path):
+        poster_url = f"{get_settings().tmdb_image_base_url.rstrip('/')}{movie.poster_path}"
+    return MovieResponse(
+        id=movie.id,
+        title=movie.title,
+        release_year=movie.release_year,
+        genres=movie.genres,
+        source=movie.source,
+        poster_url=poster_url,
+        poster_source=movie.poster_source if poster_url else None,
+    )
 
 
 class MoviePage(BaseModel):
@@ -41,7 +63,7 @@ def movies(
     sort: Literal["title", "year_asc", "year_desc"] = "title",
 ) -> MoviePage:
     rows, total = list_movies(db, query=q, genre=genre, page=page, limit=limit, sort=sort)
-    return MoviePage(items=[MovieResponse.model_validate(row) for row in rows], page=page, limit=limit, total=total, catalog_seeded=bool(db.scalar(select(Movie.id).limit(1))))
+    return MoviePage(items=[movie_response(row) for row in rows], page=page, limit=limit, total=total, catalog_seeded=bool(db.scalar(select(Movie.id).limit(1))))
 
 
 @router.get("/movies/{movie_id}", response_model=MovieResponse)
@@ -49,7 +71,7 @@ def movie_detail(movie_id: int, db: DB) -> MovieResponse:
     movie = db.get(Movie, movie_id)
     if movie is None or not movie.active:
         raise HTTPException(404, "Movie not found")
-    return MovieResponse.model_validate(movie)
+    return movie_response(movie)
 
 
 @router.get("/genres", response_model=list[str])

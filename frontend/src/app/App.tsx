@@ -1,18 +1,15 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import { MoviePoster } from '../components/MoviePoster';
 import { addWatchlist, getGenres, getMovie, getMovies, getRatings, getSimilar, getWatchlist, removeRating, removeWatchlist, setRating, type Movie } from '../lib/api';
 import { AccountPage, AuthPage, GenresPage, useProfile } from '../features/account';
 import { RecommendationsPage } from '../features/recommendations';
 
-const posterColors = ['#7d526a', '#546f75', '#9b674d', '#5e647a', '#817b4f'];
-
 function MovieCard({ movie }: { movie: Movie }) {
   return <article className="movie-card">
     <Link to={`/movies/${movie.id}`} aria-label={`View ${movie.title}`}>
-      <div className="poster" style={{ background: posterColors[movie.id % posterColors.length] }} aria-hidden="true">
-        <span>{movie.title.slice(0, 1).toUpperCase()}</span>
-      </div>
+      <MoviePoster movie={movie} />
       <div className="card-copy"><h3>{movie.title}</h3><p>{movie.release_year ?? 'Year unknown'}</p>
         <div className="chips">{movie.genres.slice(0, 2).map(genre => <span key={genre}>{genre}</span>)}</div>
       </div>
@@ -54,7 +51,7 @@ function Detail() {
   return <main className="container detail"><Link className="back" to="/">← Back to discovery</Link>
     {movie.isLoading && <p role="status">Loading movie…</p>}
     {movie.isError && <p role="alert">Could not load this movie: {movie.error.message}</p>}
-    {movie.data && <><div className="detail-layout"><div className="poster large" style={{ background: posterColors[movie.data.id % posterColors.length] }} aria-hidden="true">{movie.data.title.slice(0, 1).toUpperCase()}</div><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p className="metadata-note">MovieLens provides titles and genres. A poster, synopsis, and cast are not available in this dataset.</p><MovieActions movieId={movie.data.id} /></div></div><SimilarMovies movieId={movie.data.id} /></>}
+    {movie.data && <><div className="detail-layout"><MoviePoster movie={movie.data} size="large" /><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p className="metadata-note">{movie.data.poster_source === 'TMDB' ? 'Poster metadata is provided by TMDB. MovieLens provides the title, year, and genres.' : 'MovieLens provides titles and genres. Poster enrichment is not available for this movie.'}</p><MovieActions movieId={movie.data.id} /></div></div><SimilarMovies movieId={movie.data.id} /></>}
   </main>;
 }
 
@@ -72,8 +69,8 @@ function MovieActions({ movieId }: { movieId: number }) {
   return <div className="movie-actions"><label>Your rating <select value={rating} disabled={updateRating.isPending} onChange={event => { setError(''); updateRating.mutate(Number(event.target.value)); }}><option value={0}>Not rated</option>{Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map(value => <option value={value} key={value}>{value} stars</option>)}</select></label><button disabled={updateWatchlist.isPending} onClick={() => { setError(''); updateWatchlist.mutate(); }}>{saved ? 'Remove from watchlist' : 'Add to watchlist'}</button>{error && <p role="alert" className="form-error">{error}</p>}</div>;
 }
 
-function SimilarMovies({ movieId }: { movieId: number }) { const similar = useQuery({ queryKey: ['similar', movieId], queryFn: () => getSimilar(movieId) }); return <section className="similar"><h2>Similar movies</h2>{similar.isLoading && <p role="status">Loading similar movies…</p>}{similar.isError && <p role="alert">Similar movies are unavailable.</p>}<div className="similar-list">{similar.data?.items.map(item => <Link key={item.movie.id} to={`/movies/${item.movie.id}`}>{item.movie.title}</Link>)}</div></section>; }
+function SimilarMovies({ movieId }: { movieId: number }) { const similar = useQuery({ queryKey: ['similar', movieId], queryFn: () => getSimilar(movieId) }); return <section className="similar"><h2>Similar movies</h2>{similar.isLoading && <p role="status">Loading similar movies…</p>}{similar.isError && <p role="alert">Similar movies are unavailable.</p>}<div className="similar-list">{similar.data?.items.map(item => <Link key={item.movie.id} to={`/movies/${item.movie.id}`}><MoviePoster movie={item.movie} size="thumb" /><span>{item.movie.title}</span></Link>)}</div></section>; }
 
-function Credits() { return <main className="container prose"><p className="eyebrow">Attribution</p><h1>Credits & data</h1><p>This non-commercial demo uses the MovieLens ml-latest-small dataset from GroupLens Research at the University of Minnesota. MovieLens data has separate terms from this project's source code. GroupLens does not endorse this project.</p><p>Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems, 5(4), 19:1–19:19.</p><p><a href="https://grouplens.org/datasets/movielens/latest/">Dataset information and terms</a></p></main>; }
+function Credits() { return <main className="container prose"><p className="eyebrow">Attribution</p><h1>Credits & data</h1><p>This non-commercial demo uses the MovieLens ml-latest-small dataset from GroupLens Research at the University of Minnesota. MovieLens data has separate terms from this project's source code. GroupLens does not endorse this project.</p><p>Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems, 5(4), 19:1–19:19.</p><p><a href="https://grouplens.org/datasets/movielens/latest/">Dataset information and terms</a></p><section className="tmdb-credit"><a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer"><img src="https://www.themoviedb.org/assets/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" /></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>When enabled by the operator, poster paths and images are provided by TMDB. No TMDB image files are stored in this repository.</p><p><a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noreferrer">TMDB attribution and logo terms</a></p></section></main>; }
 
 export default function App() { return <><header className="site-header"><div className="container header-inner"><Link className="brand" to="/">recsys<span>✦</span></Link><nav aria-label="Main navigation"><NavLink to="/">Discover</NavLink><NavLink to="/for-you">For you</NavLink><NavLink to="/credits">Credits</NavLink><NavLink to="/account">Account</NavLink></nav></div></header><Routes><Route path="/" element={<Discovery />} /><Route path="/movies/:id" element={<Detail />} /><Route path="/for-you" element={<RecommendationsPage />} /><Route path="/genres" element={<GenresPage />} /><Route path="/auth" element={<AuthPage />} /><Route path="/account" element={<AccountPage />} /><Route path="/credits" element={<Credits />} /></Routes><footer className="site-footer"><div className="container">A non-commercial MovieLens demo · <Link to="/credits">Data credits</Link></div></footer></>; }
