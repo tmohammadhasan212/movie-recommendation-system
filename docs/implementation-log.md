@@ -27,6 +27,8 @@ All entries below are observed repository history and local checks, not planned 
 21. `c1c8013` — add frontend unit and browser account journeys
 22. `278b11c` — add production images, monitoring, and CI/CD delivery files
 23. `a962d45` — coalesce cold recommendation cache misses
+24. `a1f9dde` — record architecture, operations, and measured evidence
+25. `3291a46` — add optional TMDB poster enrichment
 
 ## Observed gates on 2026-11-14
 
@@ -45,6 +47,16 @@ All entries below are observed repository history and local checks, not planned 
 - Five-minute load and 50-way cold burst passed the documented targets; see `docs/performance.md`.
 - Selective trigram query used a bitmap index scan and completed in 0.097 ms.
 - Isolated `pg_dump`/`pg_restore` rehearsal matched source counts and migration revision, then temporary state was removed.
+
+## Poster enrichment gates on 2026-11-15
+
+- Alembic revision `0004` applied to the live PostgreSQL database and added the three nullable poster metadata columns.
+- The live catalog API returned the new poster fields and preserved the placeholder fallback while no TMDB token was configured.
+- The explicit enrichment command rejected the missing token without changing catalog data.
+- Python: Ruff passed; Pytest reported 31 passed and one opt-in live-stack skip.
+- Frontend: TypeScript passed; two Vitest tests and two Playwright journeys passed; the Vite production build passed.
+- `make smoke` passed liveness, readiness, Redis, and active-model checks.
+- Production images built; the web image served the `/credits` deep link with a CSP allowing only the configured TMDB image and logo hosts.
 
 ## Remaining external gates
 
