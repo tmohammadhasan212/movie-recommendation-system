@@ -62,16 +62,24 @@ def verify_archive(path: Path, expected_sha256: str = "", published_md5: str = "
     return {"sha256": digest, "upstream_md5": published_md5, "source_url": SOURCE_URL}
 
 
+def parse_upstream_md5(raw: str) -> str:
+    patterns = (
+        r"\s*([0-9a-fA-F]{32})(?:\s+\*?ml-latest-small\.zip)?\s*",
+        r"\s*MD5 \(ml-latest-small\.zip\) = ([0-9a-fA-F]{32})\s*",
+    )
+    for pattern in patterns:
+        if match := re.fullmatch(pattern, raw):
+            return match.group(1).lower()
+    raise ValueError("Upstream checksum format is invalid")
+
+
 def upstream_md5() -> str:
     request = urllib.request.Request(CHECKSUM_URL, headers={"User-Agent": "RecSys-demo/0.1"})
     with urllib.request.urlopen(request, timeout=30) as response:
         if response.geturl() != CHECKSUM_URL:
             raise ValueError("Unexpected checksum redirect")
         raw = response.read(200).decode("ascii")
-    match = re.fullmatch(r"\s*([0-9a-fA-F]{32})(?:\s+\*?ml-latest-small\.zip)?\s*", raw)
-    if match is None:
-        raise ValueError("Upstream checksum format is invalid")
-    return match.group(1).lower()
+    return parse_upstream_md5(raw)
 
 
 def download() -> None:
