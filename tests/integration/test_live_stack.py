@@ -69,7 +69,9 @@ def test_registered_user_journey() -> None:
         returned_ids = {item["movie"]["id"] for item in payload["items"]}
         assert rated_id not in returned_ids
         assert saved_id not in returned_ids
-        assert payload["fallback_reason"] == "no_active_model"
+        assert payload["model_version"].startswith("mf-")
+        assert payload["fallback_reason"] == ""
+        assert all(item["source"] == "hybrid_model" for item in payload["items"])
 
         exported = client.get("/me/export")
         assert exported.status_code == 200

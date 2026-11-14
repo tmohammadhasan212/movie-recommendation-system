@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -13,6 +16,7 @@ from backend.app.core.models import (
     GenrePreference,
     ImportedRating,
     LoginSession,
+    ModelVersion,
     Movie,
     Rating,
     WatchlistItem,
@@ -24,6 +28,7 @@ from backend.app.modules.recommendations.service import (
     rank,
     smoothed_popularity,
 )
+from backend.ml.serve import ModelBundle, app_user_scores, load_bundle, normalized
 
 router = APIRouter(tags=["recommendations"])
 DB = Annotated[Session, Depends(get_db)]
@@ -65,6 +70,24 @@ def _candidates(db: Session) -> tuple[list[Candidate], dict[int, Movie], float]:
     return candidates, {movie.id: movie for movie in movies}, global_mean
 
 
+@lru_cache(maxsize=2)
+def _load_version(version: str, artifact_uri: str) -> ModelBundle:
+    bundle = load_bundle(Path(artifact_uri))
+    if bundle.version != version:
+        raise ValueError("Model registry and artifact version differ")
+    return bundle
+
+
+def _active_bundle(db: Session) -> tuple[ModelBundle | None, str | None]:
+    version = db.scalar(select(ModelVersion).where(ModelVersion.active.is_(True)))
+    if version is None:
+        return None, "no_active_model"
+    try:
+        return _load_version(version.version_id, version.artifact_uri), None
+    except (OSError, ValueError, KeyError):
+        return None, "model_artifact_invalid"
+
+
 @router.get("/recommendations", response_model=RecommendationFeed)
 def recommendations(
     request: Request,
@@ -75,6 +98,7 @@ def recommendations(
     session = _session(request, db)
     preferred: set[str] = set()
     seen: set[int] = set()
+    ratings: list[Rating] = []
     if session:
         preferred.update(db.scalars(select(GenrePreference.genre).where(GenrePreference.user_id == session.user_id)))
         ratings = list(db.scalars(select(Rating).where(Rating.user_id == session.user_id)))
@@ -86,8 +110,31 @@ def recommendations(
             for genres in db.scalars(select(Movie.genres).where(Movie.id.in_(liked_ids))):
                 preferred.update(genres)
     candidates, movie_map, mean = _candidates(db)
+    bundle, fallback_reason = _active_bundle(db)
+    if bundle and ratings:
+        by_internal = {movie.id: movie.movielens_id for movie in movie_map.values()}
+        positive = [(by_internal[row.movie_id], row.rating) for row in ratings if row.rating >= 4]
+        negative = [(by_internal[row.movie_id], row.rating) for row in ratings if row.rating <= 2.5]
+        collaborative = app_user_scores(bundle, positive, negative)
+        if collaborative is not None:
+            collab = normalized(collaborative)
+            scored: list[tuple[float, int]] = []
+            for candidate in candidates:
+                if candidate.movie_id in seen:
+                    continue
+                source_id = by_internal[candidate.movie_id]
+                index = bundle.index.get(source_id)
+                if index is None:
+                    continue
+                popularity = smoothed_popularity(candidate.rating_sum, candidate.rating_count, mean) / 5
+                overlap = genre_similarity(candidate.genres, frozenset(preferred))
+                scored.append((0.65 * float(collab[index]) + 0.2 * overlap + 0.15 * popularity, candidate.movie_id))
+            scored.sort(key=lambda row: (-row[0], row[1]))
+            items = [RecommendationItem(movie=MovieResponse.model_validate(movie_map[movie_id]), source="hybrid_model", explanation_code="similar_to_high_ratings") for _, movie_id in scored[:limit]]
+            return RecommendationFeed(items=items, model_version=bundle.version, fallback_reason="")
+        fallback_reason = "insufficient_positive_ratings"
     ranked = rank(candidates, global_mean=mean, preferred_genres=frozenset(preferred), seen_ids=frozenset(seen), limit=limit)
-    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[item.movie_id]), source=item.source, explanation_code=item.explanation_code) for item in ranked], model_version=None, fallback_reason="no_active_model")
+    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[item.movie_id]), source=item.source, explanation_code=item.explanation_code) for item in ranked], model_version=None, fallback_reason=fallback_reason or "insufficient_app_history")
 
 
 @router.get("/movies/{movie_id}/similar", response_model=RecommendationFeed)
@@ -96,14 +143,25 @@ def similar(movie_id: int, db: DB, limit: int = Query(12, ge=1, le=100)) -> Reco
     if source is None or not source.active:
         raise HTTPException(404, "Movie not found")
     candidates, movie_map, mean = _candidates(db)
+    bundle, fallback_reason = _active_bundle(db)
     scored = []
     source_genres = frozenset(source.genres)
+    source_embedding = bundle.index.get(source.movielens_id) if bundle else None
     for candidate in candidates:
         if candidate.movie_id == movie_id:
             continue
         overlap = genre_similarity(source_genres, candidate.genres)
-        if overlap:
+        embedding_score = 0.0
+        if bundle and source_embedding is not None:
+            other_source_id = movie_map[candidate.movie_id].movielens_id
+            other_embedding = bundle.index.get(other_source_id)
+            if other_embedding is not None:
+                left, right = bundle.embeddings[source_embedding], bundle.embeddings[other_embedding]
+                denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
+                embedding_score = max(0.0, float(left @ right) / denominator) if denominator else 0.0
+        if overlap or embedding_score:
             popularity = smoothed_popularity(candidate.rating_sum, candidate.rating_count, mean) / 5
-            scored.append((0.8 * overlap + 0.2 * popularity, candidate.movie_id))
+            scored.append((0.55 * overlap + 0.35 * embedding_score + 0.1 * popularity, candidate.movie_id))
     scored.sort(key=lambda row: (-row[0], row[1]))
-    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[other_id]), source="genre_similarity", explanation_code="shared_genres") for _, other_id in scored[:limit]], model_version=None, fallback_reason="no_active_model")
+    source_name = "hybrid_similarity" if bundle else "genre_similarity"
+    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[other_id]), source=source_name, explanation_code="shared_genres") for _, other_id in scored[:limit]], model_version=bundle.version if bundle else None, fallback_reason=fallback_reason or "")

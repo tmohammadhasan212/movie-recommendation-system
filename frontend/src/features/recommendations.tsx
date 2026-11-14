@@ -6,7 +6,8 @@ import { useProfile } from './account';
 const explanations: Record<string, string> = {
   selected_genres: 'Based on your selected genres',
   popular_in_catalog: 'Popular in this catalog',
-  shared_genres: 'Shares genres with this movie'
+  shared_genres: 'Shares genres with this movie',
+  similar_to_high_ratings: 'Similar to movies you rated highly'
 };
 
 export function RecommendationsPage() {
