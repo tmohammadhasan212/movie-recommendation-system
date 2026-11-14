@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.app.api.v1.catalog import router as catalog_router
+from backend.app.api.v1.events import router as events_router
 from backend.app.api.v1.identity import router as identity_router
 from backend.app.api.v1.interactions import router as interactions_router
 from backend.app.api.v1.recommendations import router as recommendations_router
@@ -27,6 +28,7 @@ app.include_router(catalog_router, prefix="/api/v1")
 app.include_router(identity_router, prefix="/api/v1")
 app.include_router(interactions_router, prefix="/api/v1")
 app.include_router(recommendations_router, prefix="/api/v1")
+app.include_router(events_router, prefix="/api/v1")
 
 
 @app.middleware("http")

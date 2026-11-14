@@ -57,6 +57,21 @@ class Profile(BaseModel):
     genres: list[str]
 
 
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class EmailChange(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    current_password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
 def _limit(key: str, maximum: int, window: int = 60) -> None:
     try:
         client = redis.Redis.from_url(get_settings().redis_url, socket_connect_timeout=1, socket_timeout=1)
@@ -171,6 +186,51 @@ def me(session: SessionDep, db: DB) -> Profile:
         raise HTTPException(401, "Authentication required")
     genres = list(db.scalars(select(GenrePreference.genre).where(GenrePreference.user_id == user.id)))
     return Profile(id=user.id, email=user.email, profile_version=user.profile_version, genres=sorted(genres))
+
+
+@router.get("/me/export")
+def export_account(session: SessionDep, db: DB) -> dict[str, object]:
+    profile = me(session, db)
+    ratings = list(db.scalars(select(Rating).where(Rating.user_id == session.user_id)))
+    watchlist = list(db.scalars(select(WatchlistItem).where(WatchlistItem.user_id == session.user_id)))
+    events = list(db.scalars(select(InteractionEvent).where(InteractionEvent.user_id == session.user_id)))
+    return {
+        "profile": profile.model_dump(mode="json"),
+        "ratings": [{"movie_id": row.movie_id, "rating": row.rating} for row in ratings],
+        "watchlist": [{"movie_id": row.movie_id, "created_at": row.created_at.isoformat()} for row in watchlist],
+        "events": [{"id": str(row.id), "movie_id": row.movie_id, "type": row.event_type, "occurred_at": row.occurred_at.isoformat()} for row in events],
+    }
+
+
+@router.put("/me/password")
+def change_password(body: PasswordChange, session: CsrfSession, db: DB) -> dict[str, str]:
+    _limit(f"password:{session.user_id}", 5, 300)
+    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+        raise HTTPException(403, "Sign in again before changing your password")
+    user = db.get(User, session.user_id)
+    if user is None or not password_valid(user.password_hash, body.current_password):
+        raise HTTPException(403, "Current password is incorrect")
+    user.password_hash = password_hash(body.new_password)
+    db.query(LoginSession).filter(LoginSession.user_id == user.id, LoginSession.id != session.id).update({"revoked_at": utcnow()})
+    db.commit()
+    return {"message": "Password updated"}
+
+
+@router.patch("/me", response_model=Profile)
+def change_email(body: EmailChange, session: CsrfSession, db: DB) -> Profile:
+    _limit(f"profile:{session.user_id}", 5, 300)
+    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+        raise HTTPException(403, "Sign in again before changing your email")
+    user = db.get(User, session.user_id)
+    if user is None or not password_valid(user.password_hash, body.current_password):
+        raise HTTPException(403, "Current password is incorrect")
+    user.email = body.email
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Email unavailable") from None
+    return me(session, db)
 
 
 @router.delete("/me", status_code=204)
