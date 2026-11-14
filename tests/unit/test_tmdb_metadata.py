@@ -41,6 +41,25 @@ def test_client_validates_configuration_and_fetches_poster() -> None:
     assert all(request.headers["Authorization"] == "Bearer secret-token" for request in requests)
 
 
+def test_client_supports_v3_api_key_authentication() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"id": 550, "poster_path": "/poster.jpg"})
+
+    with TmdbClient(
+        "",
+        "https://api.themoviedb.org/3",
+        api_key="v3-key",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert client.poster_path(550) == "/poster.jpg"
+
+    assert requests[0].url.params["api_key"] == "v3-key"
+    assert "Authorization" not in requests[0].headers
+
+
 def test_client_retries_rate_limit_without_exposing_response_body() -> None:
     calls = 0
     sleeps: list[float] = []

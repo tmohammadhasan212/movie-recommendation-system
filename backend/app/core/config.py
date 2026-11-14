@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     session_secret: str = "development-only-replace-me"
     tmdb_api_token: str = ""
+    tmdb_api_key: str = ""
     tmdb_api_base_url: str = "https://api.themoviedb.org/3"
     tmdb_image_base_url: str = "https://image.tmdb.org/t/p/w500"
 

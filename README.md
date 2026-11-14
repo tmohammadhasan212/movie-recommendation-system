@@ -22,7 +22,7 @@ make bootstrap
 make up
 make data-download
 make data-import
-# Optional: set TMDB_API_TOKEN in .env, then enrich a bounded batch.
+# Optional: set TMDB_API_TOKEN or TMDB_API_KEY in .env, then enrich a bounded batch.
 make metadata-enrich
 make train
 make model-publish

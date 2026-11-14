@@ -43,15 +43,24 @@ class TmdbClient:
         token: str,
         base_url: str,
         *,
+        api_key: str = "",
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        if not token.strip():
-            raise ValueError("TMDB_API_TOKEN is required for metadata enrichment")
+        token = token.strip()
+        api_key = api_key.strip()
+        if not token and not api_key:
+            raise ValueError(
+                "TMDB_API_TOKEN or TMDB_API_KEY is required for metadata enrichment"
+            )
+        headers = {"Accept": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         self._sleep = sleep
         self._client = httpx.Client(
             base_url=f"{base_url.rstrip('/')}/",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            headers=headers,
+            params={"api_key": api_key} if api_key else None,
             timeout=httpx.Timeout(15, connect=5),
             transport=transport,
         )

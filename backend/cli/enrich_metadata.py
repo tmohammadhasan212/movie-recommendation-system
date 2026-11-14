@@ -33,14 +33,18 @@ def enrich(*, limit: int, stale_days: int, delay: float) -> dict[str, int]:
                     Movie.tmdb_id.is_not(None),
                     or_(Movie.poster_updated_at.is_(None), Movie.poster_updated_at < cutoff),
                 )
-                .order_by(Movie.id)
+                .order_by(Movie.title, Movie.id)
                 .limit(limit)
             ).all()
         )
 
     results: list[tuple[int, str | None]] = []
     failed = 0
-    with TmdbClient(settings.tmdb_api_token, settings.tmdb_api_base_url) as client:
+    with TmdbClient(
+        settings.tmdb_api_token,
+        settings.tmdb_api_base_url,
+        api_key=settings.tmdb_api_key,
+    ) as client:
         client.validate_image_base(settings.tmdb_image_base_url)
         for movie_id, tmdb_id in candidates:
             try:
