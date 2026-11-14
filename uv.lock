@@ -875,10 +875,12 @@ dependencies = [
     { name = "celery" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "numpy" },
     { name = "packaging" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "redis" },
+    { name = "safetensors" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
 ]
@@ -890,8 +892,6 @@ dev = [
     { name = "ruff" },
 ]
 ml = [
-    { name = "numpy" },
-    { name = "safetensors" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "torch" },
@@ -904,10 +904,12 @@ requires-dist = [
     { name = "celery", specifier = "==5.7.0" },
     { name = "fastapi", specifier = "==0.162.7" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "numpy", specifier = "==2.5.4" },
     { name = "packaging", specifier = "==26.3" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.9" },
     { name = "pydantic-settings", specifier = "==2.16.3" },
     { name = "redis", specifier = "==8.1.0" },
+    { name = "safetensors", specifier = "==0.8.0" },
     { name = "sqlalchemy", specifier = "==2.1.8" },
     { name = "uvicorn", specifier = "==0.54.0" },
 ]
@@ -919,8 +921,6 @@ dev = [
     { name = "ruff", specifier = "==0.17.5" },
 ]
 ml = [
-    { name = "numpy", specifier = "==2.5.4" },
-    { name = "safetensors", specifier = "==0.8.0" },
     { name = "scikit-learn", specifier = "==1.9.1" },
     { name = "scipy", specifier = "==1.18.1" },
     { name = "torch", specifier = "==2.15.0" },

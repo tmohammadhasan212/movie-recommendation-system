@@ -1,5 +1,7 @@
 .PHONY: help bootstrap up down migrate data-download data-import train model-publish test test-e2e lint load-test monitoring-up build smoke
 
+export UV_CACHE_DIR ?= $(CURDIR)/.uv-cache
+
 help:
 	@echo 'bootstrap up down migrate data-download data-import train model-publish test test-e2e lint load-test monitoring-up build smoke'
 
@@ -27,7 +29,7 @@ train:
 	uv run --group ml python -m backend.cli.train_model
 
 model-publish:
-	uv run --group ml python -m backend.cli.publish_model
+	docker-compose run --rm api python -m backend.cli.publish_model
 
 test:
 	uv run pytest
