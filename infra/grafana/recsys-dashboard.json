@@ -12,6 +12,7 @@
     {"type":"stat","title":"Dead letters","gridPos":{"h":8,"w":6,"x":18,"y":8},"targets":[{"expr":"recsys_outbox_dead_letter_count"}]},
     {"type":"timeseries","title":"Recommendation cache","gridPos":{"h":8,"w":12,"x":0,"y":16},"targets":[{"expr":"sum by (result) (rate(recsys_cache_requests_total[5m]))","legendFormat":"{{result}}"}]},
     {"type":"timeseries","title":"Outbox health","gridPos":{"h":8,"w":6,"x":12,"y":16},"targets":[{"expr":"recsys_outbox_backlog","legendFormat":"pending"},{"expr":"recsys_outbox_oldest_age_seconds","legendFormat":"oldest seconds"}]},
-    {"type":"stat","title":"Worker heartbeat age","gridPos":{"h":8,"w":6,"x":18,"y":16},"targets":[{"expr":"time() - recsys_worker_heartbeat_unixtime"}]}
+    {"type":"stat","title":"Worker heartbeat age","gridPos":{"h":8,"w":6,"x":18,"y":16},"targets":[{"expr":"time() - recsys_worker_heartbeat_unixtime"}]},
+    {"type":"timeseries","title":"Rate-limit decisions","gridPos":{"h":8,"w":12,"x":0,"y":24},"targets":[{"expr":"sum by (scope, outcome) (rate(recsys_rate_limit_decisions_total[5m]))","legendFormat":"{{scope}} {{outcome}}"}]}
   ]
 }

@@ -29,3 +29,7 @@ groups:
         for: 2m
         labels: { severity: critical }
         annotations: { summary: "RecSys API metrics endpoint is unavailable" }
+      - alert: RecSysRateLimiterUnavailable
+        expr: increase(recsys_rate_limit_decisions_total{outcome="unavailable"}[5m]) > 0
+        labels: { severity: critical }
+        annotations: { summary: "A fail-closed rate limiter could not reach Redis" }

@@ -29,6 +29,11 @@ CACHE_REQUESTS = Counter(
 )
 DATABASE_ERRORS = Counter("recsys_database_errors_total", "Database operation failures")
 REDIS_ERRORS = Counter("recsys_redis_errors_total", "Redis operation failures", ("operation",))
+RATE_LIMIT_DECISIONS = Counter(
+    "recsys_rate_limit_decisions_total",
+    "Application rate-limit decisions",
+    ("scope", "outcome"),
+)
 OUTBOX_BACKLOG = Gauge("recsys_outbox_backlog", "Pending outbox events")
 OUTBOX_OLDEST_AGE = Gauge(
     "recsys_outbox_oldest_age_seconds", "Age of the oldest pending outbox event"

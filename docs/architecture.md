@@ -38,6 +38,8 @@ The browser never receives source user IDs. Redis failure cannot lose the commit
 
 The access cookie expires after 15 minutes while the refresh session lasts up to 30 days. When an authenticated API request returns `401`, the browser client sends the refresh cookie with the current CSRF token, accepts the rotated access, refresh, and CSRF cookies, then retries the original request once. Concurrent requests on the same page share one refresh operation, and requests that receive a delayed `401` after renewal retry against the newer session revision. Login, registration, and refresh failures never recursively trigger renewal. A failed refresh preserves the original authentication error so the UI can return to sign-in normally.
 
+Registration, login, account changes, and event ingestion use shared Redis fixed-window limits. A Lua operation atomically increments the counter and establishes its expiry, including repair of a legacy key with no TTL. Redis errors fail closed for protected actions. Metrics use only fixed scope/outcome labels; client-derived hashes and user IDs remain exclusively in Redis keys.
+
 ## Recommendation sequence
 
 For users with ratings, the API loads the single active model registry row, verifies checksums, and constructs an app-user vector from positively rated item embeddings. Negative ratings suppress related embeddings. Anonymous and no-rating requests skip model loading and use deterministic popularity/content ranking. Scores blend collaborative, genre, and popularity signals and filter rated/watchlisted items. A missing, corrupt, or inapplicable artifact returns fallback results with `fallback_reason`; training never runs in a request.

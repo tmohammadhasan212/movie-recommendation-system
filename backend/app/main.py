@@ -100,6 +100,7 @@ async def http_error(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": f"http_{exc.status_code}", "message": str(exc.detail), "request_id": request.state.request_id},
+        headers=exc.headers,
     )
 
 

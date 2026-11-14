@@ -5,7 +5,6 @@ import uuid
 from datetime import timedelta
 from typing import Annotated
 
-import redis
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -24,6 +23,7 @@ from backend.app.core.models import (
     User,
     WatchlistItem,
 )
+from backend.app.core.rate_limit import enforce_rate_limit
 from backend.app.modules.identity.security import (
     REFRESH_SECONDS,
     hash_secret,
@@ -72,18 +72,6 @@ class EmailChange(BaseModel):
         return normalize_email(value)
 
 
-def _limit(key: str, maximum: int, window: int = 60) -> None:
-    try:
-        client = redis.Redis.from_url(get_settings().redis_url, socket_connect_timeout=1, socket_timeout=1)
-        count = client.incr(key)
-        if count == 1:
-            client.expire(key, window)
-        if count > maximum:
-            raise HTTPException(429, "Too many attempts; try again later")
-    except redis.RedisError:
-        raise HTTPException(503, "Abuse protection unavailable") from None
-
-
 def _set_cookies(response: Response, session: LoginSession, refresh: str, csrf: str) -> None:
     secure = get_settings().cookie_secure
     response.set_cookie("access", sign_access_token(session.id), max_age=900, httponly=True, secure=secure, samesite="lax", path="/")
@@ -121,7 +109,11 @@ CsrfSession = Annotated[LoginSession, Depends(csrf_session)]
 
 @router.post("/auth/register", status_code=202)
 def register(credentials: Credentials, request: Request, db: DB) -> dict[str, str]:
-    _limit(f"register:{hash_secret(request.client.host if request.client else 'unknown')}", 5)
+    enforce_rate_limit(
+        f"register:{hash_secret(request.client.host if request.client else 'unknown')}",
+        "register",
+        5,
+    )
     exists = db.scalar(select(User.id).where(User.email == credentials.email, User.deleted_at.is_(None)))
     if not exists:
         db.add(User(email=credentials.email, password_hash=password_hash(credentials.password)))
@@ -135,7 +127,9 @@ def register(credentials: Credentials, request: Request, db: DB) -> dict[str, st
 @router.post("/auth/login")
 def login(credentials: Credentials, request: Request, response: Response, db: DB) -> dict[str, str]:
     client_hash = hash_secret(request.client.host if request.client else "unknown")
-    _limit(f"login:{client_hash}:{hash_secret(credentials.email)}", 10)
+    enforce_rate_limit(
+        f"login:{client_hash}:{hash_secret(credentials.email)}", "login", 10
+    )
     user = db.scalar(select(User).where(User.email == credentials.email, User.deleted_at.is_(None)))
     if user is None or not password_valid(user.password_hash, credentials.password):
         raise HTTPException(401, "Invalid credentials")
@@ -205,7 +199,7 @@ def export_account(session: SessionDep, db: DB) -> dict[str, object]:
 
 @router.put("/me/password")
 def change_password(body: PasswordChange, session: CsrfSession, db: DB) -> dict[str, str]:
-    _limit(f"password:{session.user_id}", 5, 300)
+    enforce_rate_limit(f"password:{session.user_id}", "password", 5, 300)
     if utcnow() - session.authenticated_at > timedelta(minutes=15):
         raise HTTPException(403, "Sign in again before changing your password")
     user = db.get(User, session.user_id)
@@ -219,7 +213,7 @@ def change_password(body: PasswordChange, session: CsrfSession, db: DB) -> dict[
 
 @router.patch("/me", response_model=Profile)
 def change_email(body: EmailChange, session: CsrfSession, db: DB) -> Profile:
-    _limit(f"profile:{session.user_id}", 5, 300)
+    enforce_rate_limit(f"profile:{session.user_id}", "profile", 5, 300)
     if utcnow() - session.authenticated_at > timedelta(minutes=15):
         raise HTTPException(403, "Sign in again before changing your email")
     user = db.get(User, session.user_id)

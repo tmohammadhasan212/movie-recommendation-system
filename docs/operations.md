@@ -2,6 +2,8 @@
 
 Check `docker-compose ps -a`, then `/health/ready`. Inspect API, worker, and scheduler logs with `docker-compose logs --tail=200 api worker scheduler`. Prometheus is at `localhost:9090` and Grafana at `localhost:3000` after `make monitoring-up`.
 
+The operations dashboard breaks rate-limit decisions down by the fixed `scope` and `outcome` labels. Any `unavailable` outcome means a protected request failed closed because Redis could not provide trustworthy limiter state; the `RecSysRateLimiterUnavailable` alert fires immediately. Check API and Redis health before retrying the action. Rejected requests return `Retry-After` with the remaining fixed-window duration.
+
 For stuck events, inspect `outbox_events` by status and `next_attempt_at`. List dead letters without exposing their payloads with `make outbox-replay ARGS="--list"`. After fixing the cause, dry-run exact event IDs first:
 
 ```bash

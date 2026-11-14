@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.app.api.v1.identity import CsrfSession, _limit
+from backend.app.api.v1.identity import CsrfSession
 from backend.app.core.db import get_db, utcnow
 from backend.app.core.models import InteractionEvent, Movie, OutboxEvent
+from backend.app.core.rate_limit import enforce_rate_limit
 
 router = APIRouter(tags=["events"])
 DB = Annotated[Session, Depends(get_db)]
@@ -26,7 +27,7 @@ class EventInput(BaseModel):
 
 @router.post("/events", status_code=202)
 def record_event(body: EventInput, request: Request, session: CsrfSession, db: DB) -> dict[str, str]:
-    _limit(f"events:{session.user_id}", 120)
+    enforce_rate_limit(f"events:{session.user_id}", "events", 120)
     now = utcnow()
     if not body.consent:
         raise HTTPException(403, "Consent required")
