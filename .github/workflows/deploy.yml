@@ -11,6 +11,20 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.image_sha }}
+          fetch-depth: 0
+      - name: Validate deployment revision
+        env:
+          IMAGE_SHA: ${{ inputs.image_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          case "$IMAGE_SHA" in
+            *[!0-9a-f]*|'') exit 2 ;;
+          esac
+          test "${#IMAGE_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$IMAGE_SHA"
+          git merge-base --is-ancestor "$IMAGE_SHA" "origin/$DEFAULT_BRANCH"
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -26,4 +40,5 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           IMAGE_SHA: ${{ inputs.image_sha }}
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/recsys && ./infra/deploy.sh '$IMAGE_SHA'"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd /opt/recsys && git fetch --depth=1 origin '$IMAGE_SHA' && git checkout --detach '$IMAGE_SHA' && ./infra/deploy.sh '$IMAGE_SHA'"

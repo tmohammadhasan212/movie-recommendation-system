@@ -1,4 +1,6 @@
 services:
+  migrate:
+    image: ${RECSYS_API_IMAGE:-recsys-api:local}
   api:
     image: ${RECSYS_API_IMAGE:-recsys-api:local}
     ports: !reset []
@@ -8,6 +10,10 @@ services:
     deploy:
       resources:
         limits: { memory: 1G, cpus: "1.0" }
+  worker:
+    image: ${RECSYS_API_IMAGE:-recsys-api:local}
+  scheduler:
+    image: ${RECSYS_API_IMAGE:-recsys-api:local}
   web:
     image: ${RECSYS_WEB_IMAGE:-recsys-web:local}
     build:

@@ -32,8 +32,12 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://recsys:recsys@localhost:5432/recsys
       - run: docker-compose config --quiet
-      - run: docker build -f Dockerfile.api -t recsys-api:test .
-      - run: docker build -f Dockerfile.web.prod -t recsys-web:test .
+      - run: docker build --build-arg VCS_REF="$GITHUB_SHA" -f Dockerfile.api -t recsys-api:test .
+      - run: docker build --build-arg VCS_REF="$GITHUB_SHA" -f Dockerfile.web.prod -t recsys-web:test .
+      - name: Verify image revision labels
+        run: |
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' recsys-api:test)" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' recsys-web:test)" = "$GITHUB_SHA"
   audit:
     runs-on: ubuntu-latest
     steps:

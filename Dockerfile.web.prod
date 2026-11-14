@@ -11,4 +11,6 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node infra/static-server.mjs ./server.mjs
 USER node
 EXPOSE 8080
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF
 CMD ["node", "server.mjs"]
