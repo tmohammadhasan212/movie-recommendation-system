@@ -10,6 +10,9 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     broker_transport_options={"visibility_timeout": 3600},
-    beat_schedule={"dispatch-outbox": {"task": "recsys.dispatch_outbox", "schedule": 5.0}},
-    imports=("backend.app.workers.outbox",),
+    beat_schedule={
+        "dispatch-outbox": {"task": "recsys.dispatch_outbox", "schedule": 5.0},
+        "purge-old-events": {"task": "recsys.purge_old_events", "schedule": 86400.0},
+    },
+    imports=("backend.app.workers.outbox", "backend.app.workers.retention"),
 )

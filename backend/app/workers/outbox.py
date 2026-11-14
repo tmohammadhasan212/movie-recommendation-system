@@ -9,7 +9,9 @@ from datetime import timedelta
 from kombu.exceptions import OperationalError
 from sqlalchemy import select
 
+from backend.app.core.cache import record_worker_heartbeat
 from backend.app.core.db import SessionLocal, utcnow
+from backend.app.core.metrics import OUTBOX_DEAD_LETTERS, OUTBOX_DISPATCHED, WORKER_HEARTBEAT
 from backend.app.core.models import OutboxEvent, ProcessedEvent
 from backend.app.workers.celery_app import celery_app
 
@@ -39,14 +41,18 @@ def dispatch_outbox() -> int:
             try:
                 process_event.delay(str(event.id))
                 event.status = "dispatched"
+                OUTBOX_DISPATCHED.inc()
                 dispatched += 1
             except OperationalError:
                 event.attempt_count += 1
                 event.error_code = "broker_unavailable"
                 if event.attempt_count >= MAX_ATTEMPTS:
                     event.status = "dead_letter"
+                    OUTBOX_DEAD_LETTERS.inc()
                 else:
                     event.next_attempt_at = utcnow() + timedelta(seconds=retry_delay(event.attempt_count, random.random()))
+    WORKER_HEARTBEAT.set_to_current_time()
+    record_worker_heartbeat()
     return dispatched
 
 
@@ -65,3 +71,5 @@ def process_event(self, event_id: str) -> None:
         event.status = "processed"
         event.processed_at = utcnow()
         event.error_code = None
+        WORKER_HEARTBEAT.set_to_current_time()
+        record_worker_heartbeat()

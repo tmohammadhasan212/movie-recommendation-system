@@ -11,7 +11,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.catalog import MovieResponse
+from backend.app.core.cache import get as cache_get
+from backend.app.core.cache import set_value as cache_set
 from backend.app.core.db import get_db, utcnow
+from backend.app.core.metrics import MODEL_LOAD_FAILURES, RECOMMENDATIONS
 from backend.app.core.models import (
     GenrePreference,
     ImportedRating,
@@ -19,6 +22,7 @@ from backend.app.core.models import (
     ModelVersion,
     Movie,
     Rating,
+    User,
     WatchlistItem,
 )
 from backend.app.modules.identity.security import verify_access_token
@@ -46,6 +50,23 @@ class RecommendationFeed(BaseModel):
     fallback_reason: str
 
 
+def _recommendation_cache_key(
+    *,
+    user_id: str | None,
+    profile_version: int,
+    model_version: str | None,
+    limit: int,
+    include_watchlist: bool,
+) -> str:
+    version = model_version or "fallback"
+    if user_id is None:
+        return f"recommendations:anonymous:{version}:{limit}"
+    return (
+        f"recommendations:user:{user_id}:{profile_version}:"
+        f"{version}:{limit}:{int(include_watchlist)}"
+    )
+
+
 def _session(request: Request, db: Session) -> LoginSession | None:
     session_id = verify_access_token(request.cookies.get("access", ""))
     if session_id is None:
@@ -66,7 +87,14 @@ def _candidates(db: Session) -> tuple[list[Candidate], dict[int, Movie], float]:
     total_sum = sum(value[0] for value in by_source.values())
     total_count = sum(value[1] for value in by_source.values())
     global_mean = total_sum / total_count if total_count else 3.0
-    candidates = [Candidate(movie.id, frozenset(movie.genres), *by_source.get(movie.movielens_id, (0.0, 0))) for movie in movies]
+    candidates = [
+        Candidate(
+            movie.id,
+            frozenset(movie.genres),
+            *by_source.get(movie.movielens_id, (0.0, 0)),
+        )
+        for movie in movies
+    ]
     return candidates, {movie.id: movie for movie in movies}, global_mean
 
 
@@ -85,6 +113,7 @@ def _active_bundle(db: Session) -> tuple[ModelBundle | None, str | None]:
     try:
         return _load_version(version.version_id, version.artifact_uri), None
     except (OSError, ValueError, KeyError):
+        MODEL_LOAD_FAILURES.labels("invalid_artifact").inc()
         return None, "model_artifact_invalid"
 
 
@@ -96,6 +125,26 @@ def recommendations(
     include_watchlist: bool = False,
 ) -> RecommendationFeed:
     session = _session(request, db)
+    active_version = db.scalar(select(ModelVersion.version_id).where(ModelVersion.active.is_(True)))
+    if session:
+        profile_version = db.scalar(select(User.profile_version).where(User.id == session.user_id)) or 0
+        cache_key = _recommendation_cache_key(
+            user_id=str(session.user_id),
+            profile_version=profile_version,
+            model_version=active_version,
+            limit=limit,
+            include_watchlist=include_watchlist,
+        )
+    else:
+        cache_key = _recommendation_cache_key(
+            user_id=None,
+            profile_version=0,
+            model_version=active_version,
+            limit=limit,
+            include_watchlist=False,
+        )
+    if cached := cache_get(cache_key):
+        return RecommendationFeed.model_validate_json(cached)
     preferred: set[str] = set()
     seen: set[int] = set()
     ratings: list[Rating] = []
@@ -130,11 +179,37 @@ def recommendations(
                 overlap = genre_similarity(candidate.genres, frozenset(preferred))
                 scored.append((0.65 * float(collab[index]) + 0.2 * overlap + 0.15 * popularity, candidate.movie_id))
             scored.sort(key=lambda row: (-row[0], row[1]))
-            items = [RecommendationItem(movie=MovieResponse.model_validate(movie_map[movie_id]), source="hybrid_model", explanation_code="similar_to_high_ratings") for _, movie_id in scored[:limit]]
-            return RecommendationFeed(items=items, model_version=bundle.version, fallback_reason="")
+            items = [
+                RecommendationItem(
+                    movie=MovieResponse.model_validate(movie_map[movie_id]),
+                    source="hybrid_model",
+                    explanation_code="similar_to_high_ratings",
+                )
+                for _, movie_id in scored[:limit]
+            ]
+            RECOMMENDATIONS.labels("hybrid_model", "none").inc()
+            response = RecommendationFeed(items=items, model_version=bundle.version, fallback_reason="")
+            cache_set(cache_key, response.model_dump_json())
+            return response
         fallback_reason = "insufficient_positive_ratings"
     ranked = rank(candidates, global_mean=mean, preferred_genres=frozenset(preferred), seen_ids=frozenset(seen), limit=limit)
-    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[item.movie_id]), source=item.source, explanation_code=item.explanation_code) for item in ranked], model_version=None, fallback_reason=fallback_reason or "insufficient_app_history")
+    reason = fallback_reason or "insufficient_app_history"
+    source = ranked[0].source if ranked else "empty"
+    RECOMMENDATIONS.labels(source, reason).inc()
+    response = RecommendationFeed(
+        items=[
+            RecommendationItem(
+                movie=MovieResponse.model_validate(movie_map[item.movie_id]),
+                source=item.source,
+                explanation_code=item.explanation_code,
+            )
+            for item in ranked
+        ],
+        model_version=None,
+        fallback_reason=reason,
+    )
+    cache_set(cache_key, response.model_dump_json())
+    return response
 
 
 @router.get("/movies/{movie_id}/similar", response_model=RecommendationFeed)
@@ -164,4 +239,15 @@ def similar(movie_id: int, db: DB, limit: int = Query(12, ge=1, le=100)) -> Reco
             scored.append((0.55 * overlap + 0.35 * embedding_score + 0.1 * popularity, candidate.movie_id))
     scored.sort(key=lambda row: (-row[0], row[1]))
     source_name = "hybrid_similarity" if bundle else "genre_similarity"
-    return RecommendationFeed(items=[RecommendationItem(movie=MovieResponse.model_validate(movie_map[other_id]), source=source_name, explanation_code="shared_genres") for _, other_id in scored[:limit]], model_version=bundle.version if bundle else None, fallback_reason=fallback_reason or "")
+    return RecommendationFeed(
+        items=[
+            RecommendationItem(
+                movie=MovieResponse.model_validate(movie_map[other_id]),
+                source=source_name,
+                explanation_code="shared_genres",
+            )
+            for _, other_id in scored[:limit]
+        ],
+        model_version=bundle.version if bundle else None,
+        fallback_reason=fallback_reason or "",
+    )

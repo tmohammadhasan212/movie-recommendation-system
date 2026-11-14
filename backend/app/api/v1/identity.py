@@ -134,7 +134,8 @@ def register(credentials: Credentials, request: Request, db: DB) -> dict[str, st
 
 @router.post("/auth/login")
 def login(credentials: Credentials, request: Request, response: Response, db: DB) -> dict[str, str]:
-    _limit(f"login:{hash_secret(request.client.host if request.client else 'unknown')}", 10)
+    client_hash = hash_secret(request.client.host if request.client else "unknown")
+    _limit(f"login:{client_hash}:{hash_secret(credentials.email)}", 10)
     user = db.scalar(select(User).where(User.email == credentials.email, User.deleted_at.is_(None)))
     if user is None or not password_valid(user.password_hash, credentials.password):
         raise HTTPException(401, "Invalid credentials")
