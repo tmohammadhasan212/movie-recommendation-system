@@ -2,7 +2,7 @@
 
 | Threat | Current control | Remaining limitation |
 |---|---|---|
-| Credential theft | Argon2id, HttpOnly cookies, short access lifetime, refresh rotation, session revocation | No password recovery flow |
+| Credential theft | Argon2id, HttpOnly cookies, short access lifetime, refresh rotation, session revocation, single-flight browser renewal | No password recovery flow; renewal coordination is scoped to one browser tab |
 | CSRF | SameSite cookies plus per-session double-submit token checked server-side | Origin checking could add defense in depth |
 | Account enumeration | Registration always returns a generic accepted response | Timing has not been formally tested |
 | Brute force | Redis-backed shared limits fail closed | Rate-limit metrics are not yet exposed |

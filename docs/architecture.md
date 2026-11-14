@@ -34,6 +34,10 @@ sequenceDiagram
 
 The browser never receives source user IDs. Redis failure cannot lose the committed interaction because the outbox is in PostgreSQL. The worker can receive duplicates; `(event_id, consumer)` is unique. Recommendation cache keys include user ID, profile version, active model version, limit, and watchlist behavior. Entries expire after five minutes. A short token-owned Redis reservation coalesces concurrent cold misses; Redis failure remains a direct-scoring, fail-open path.
 
+## Session renewal
+
+The access cookie expires after 15 minutes while the refresh session lasts up to 30 days. When an authenticated API request returns `401`, the browser client sends the refresh cookie with the current CSRF token, accepts the rotated access, refresh, and CSRF cookies, then retries the original request once. Concurrent requests on the same page share one refresh operation, and requests that receive a delayed `401` after renewal retry against the newer session revision. Login, registration, and refresh failures never recursively trigger renewal. A failed refresh preserves the original authentication error so the UI can return to sign-in normally.
+
 ## Recommendation sequence
 
 For users with ratings, the API loads the single active model registry row, verifies checksums, and constructs an app-user vector from positively rated item embeddings. Negative ratings suppress related embeddings. Anonymous and no-rating requests skip model loading and use deterministic popularity/content ranking. Scores blend collaborative, genre, and popularity signals and filter rated/watchlisted items. A missing, corrupt, or inapplicable artifact returns fallback results with `fallback_reason`; training never runs in a request.

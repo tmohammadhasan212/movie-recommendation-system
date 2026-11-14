@@ -28,6 +28,15 @@ def test_registered_user_journey() -> None:
         assert client.cookies.get("refresh")
         assert client.cookies.get("csrf")
 
+        previous_refresh = client.cookies["refresh"]
+        previous_csrf = client.cookies["csrf"]
+        client.cookies.delete("access")
+        refreshed = client.post("/auth/refresh", headers=_csrf(client))
+        assert refreshed.status_code == 200
+        assert client.cookies.get("access")
+        assert client.cookies["refresh"] != previous_refresh
+        assert client.cookies["csrf"] != previous_csrf
+
         genres = client.get("/genres")
         assert genres.status_code == 200
         assert "Action" in genres.json()

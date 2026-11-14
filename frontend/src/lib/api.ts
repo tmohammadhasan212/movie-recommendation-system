@@ -22,18 +22,59 @@ interface Problem {
   request_id: string;
 }
 
-async function request<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string): Promise<T> {
-  const csrf = typeof document === 'undefined' ? undefined : document.cookie.split('; ').find(part => part.startsWith('csrf='))?.split('=')[1];
-  const response = await fetch(`/api/v1${path}`, {
+let refreshPromise: Promise<boolean> | null = null;
+let sessionRevision = 0;
+
+function csrfToken(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const raw = document.cookie.split('; ').find(part => part.startsWith('csrf='))?.slice(5);
+  if (!raw) return undefined;
+  try { return decodeURIComponent(raw); }
+  catch { return undefined; }
+}
+
+function send(path: string, method: string, body?: unknown, idempotencyKey?: string): Promise<Response> {
+  const csrf = csrfToken();
+  return fetch(`/api/v1${path}`, {
     method,
     credentials: 'same-origin',
     headers: {
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {}),
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
       ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
+}
+
+async function refreshSession(): Promise<boolean> {
+  if (!csrfToken()) return false;
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const refreshed = (await send('/auth/refresh', 'POST')).ok;
+        if (refreshed) sessionRevision += 1;
+        return refreshed;
+      } catch {
+        return false;
+      }
+    })().finally(() => { refreshPromise = null; });
+  }
+  return refreshPromise;
+}
+
+function canRefresh(path: string): boolean {
+  return path !== '/auth/login' && path !== '/auth/register' && path !== '/auth/refresh';
+}
+
+async function request<T>(path: string, method = 'GET', body?: unknown, idempotencyKey?: string): Promise<T> {
+  const requestRevision = sessionRevision;
+  let response = await send(path, method, body, idempotencyKey);
+  if (response.status === 401 && canRefresh(path)) {
+    if (requestRevision !== sessionRevision || await refreshSession()) {
+      response = await send(path, method, body, idempotencyKey);
+    }
+  }
   if (!response.ok) {
     const problem = await response.json().catch(() => null) as Problem | null;
     throw new Error(problem?.message ?? `Request failed (${response.status})`);

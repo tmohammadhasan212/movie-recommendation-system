@@ -8,7 +8,7 @@ test('credits display the required TMDB attribution', async ({ page }) => {
   await expect(page.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.')).toBeVisible();
 });
 
-test('registered user can personalize, rate, save, sign back in, and delete account', async ({ page }) => {
+test('registered user can renew, personalize, rate, save, sign back in, and delete account', async ({ page, context }) => {
   const email = `browser-${Date.now()}@example.test`;
   const password = 'correct horse battery staple';
   await page.goto('/auth');
@@ -19,6 +19,12 @@ test('registered user can personalize, rate, save, sign back in, and delete acco
   await expect(page.getByText(/account is ready to sign in/i)).toBeVisible();
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/for-you/);
+
+  const signedInCookies = await context.cookies();
+  await context.clearCookies();
+  await context.addCookies(signedInCookies.filter(cookie => cookie.name !== 'access'));
+  await page.goto('/account');
+  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
 
   await page.goto('/genres');
   await page.getByLabel('Action').check();
