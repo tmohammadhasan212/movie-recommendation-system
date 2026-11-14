@@ -52,4 +52,7 @@ build:
 	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
 
 smoke:
-	curl --fail http://localhost:8000/health/live
+	curl --fail --silent http://localhost:8000/health/live
+	curl --fail --silent http://localhost:8000/health/ready
+	docker-compose exec -T redis redis-cli ping
+	docker-compose exec -T db psql -U recsys -d recsys -Atc "select count(*) from model_versions where active"

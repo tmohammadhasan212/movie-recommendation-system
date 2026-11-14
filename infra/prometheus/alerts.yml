@@ -1,0 +1,31 @@
+groups:
+  - name: recsys
+    rules:
+      - alert: RecSysHighServerErrorRate
+        expr: sum(rate(recsys_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(recsys_http_requests_total[5m])), 0.001) > 0.01
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "RecSys server error rate exceeds 1%" }
+      - alert: RecSysModelLoadFailure
+        expr: increase(recsys_model_load_failures_total[10m]) > 0
+        labels: { severity: critical }
+        annotations: { summary: "A model artifact failed validation" }
+      - alert: RecSysDeadLetter
+        expr: recsys_outbox_dead_letter_count > 0
+        labels: { severity: critical }
+        annotations: { summary: "An outbox event moved to dead letter" }
+      - alert: RecSysOutboxBacklog
+        expr: recsys_outbox_backlog > 100 or recsys_outbox_oldest_age_seconds > 300
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The outbox backlog is prolonged" }
+      - alert: RecSysWorkerHeartbeatMissing
+        expr: time() - recsys_worker_heartbeat_unixtime > 120
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "No worker heartbeat has been observed" }
+      - alert: RecSysReadinessDown
+        expr: up{job="recsys-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "RecSys API metrics endpoint is unavailable" }

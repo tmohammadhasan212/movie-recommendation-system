@@ -1,0 +1,17 @@
+{
+  "title": "RecSys Operations",
+  "uid": "recsys-ops",
+  "schemaVersion": 41,
+  "refresh": "15s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {"type":"timeseries","title":"Request rate","gridPos":{"h":8,"w":12,"x":0,"y":0},"targets":[{"expr":"sum by (route, status) (rate(recsys_http_requests_total[5m]))","legendFormat":"{{route}} {{status}}"}]},
+    {"type":"timeseries","title":"p95 latency","gridPos":{"h":8,"w":12,"x":12,"y":0},"targets":[{"expr":"histogram_quantile(0.95, sum by (le, route) (rate(recsys_http_request_duration_seconds_bucket[5m])))","legendFormat":"{{route}}"}]},
+    {"type":"timeseries","title":"Recommendation sources","gridPos":{"h":8,"w":12,"x":0,"y":8},"targets":[{"expr":"sum by (source, fallback_reason) (rate(recsys_recommendations_total[5m]))","legendFormat":"{{source}} {{fallback_reason}}"}]},
+    {"type":"stat","title":"Model load failures","gridPos":{"h":8,"w":6,"x":12,"y":8},"targets":[{"expr":"sum(recsys_model_load_failures_total)"}]},
+    {"type":"stat","title":"Dead letters","gridPos":{"h":8,"w":6,"x":18,"y":8},"targets":[{"expr":"recsys_outbox_dead_letter_count"}]},
+    {"type":"timeseries","title":"Recommendation cache","gridPos":{"h":8,"w":12,"x":0,"y":16},"targets":[{"expr":"sum by (result) (rate(recsys_cache_requests_total[5m]))","legendFormat":"{{result}}"}]},
+    {"type":"timeseries","title":"Outbox health","gridPos":{"h":8,"w":6,"x":12,"y":16},"targets":[{"expr":"recsys_outbox_backlog","legendFormat":"pending"},{"expr":"recsys_outbox_oldest_age_seconds","legendFormat":"oldest seconds"}]},
+    {"type":"stat","title":"Worker heartbeat age","gridPos":{"h":8,"w":6,"x":18,"y":16},"targets":[{"expr":"time() - recsys_worker_heartbeat_unixtime"}]}
+  ]
+}

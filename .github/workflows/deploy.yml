@@ -1,0 +1,29 @@
+name: Manual VPS deploy
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha: { description: "CI-tested Git SHA to deploy", required: true }
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Deploy tested images
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          IMAGE_SHA: ${{ inputs.image_sha }}
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/recsys && ./infra/deploy.sh '$IMAGE_SHA'"
