@@ -1,19 +1,35 @@
+x-production-backend-environment: &production-backend-environment
+  APP_ENV: production
+  COOKIE_SECURE: "true"
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required for production}
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for production}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+
 services:
+  db:
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required for production}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required for production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required for production}
+    deploy:
+      resources:
+        limits: { memory: 1G, cpus: "1.0" }
   migrate:
     image: ${RECSYS_API_IMAGE:-recsys-api:local}
+    environment: *production-backend-environment
   api:
     image: ${RECSYS_API_IMAGE:-recsys-api:local}
     ports: !reset []
-    environment:
-      APP_ENV: production
-      COOKIE_SECURE: "true"
+    environment: *production-backend-environment
     deploy:
       resources:
         limits: { memory: 1G, cpus: "1.0" }
   worker:
     image: ${RECSYS_API_IMAGE:-recsys-api:local}
+    environment: *production-backend-environment
   scheduler:
     image: ${RECSYS_API_IMAGE:-recsys-api:local}
+    environment: *production-backend-environment
   web:
     image: ${RECSYS_WEB_IMAGE:-recsys-web:local}
     build:
@@ -23,7 +39,7 @@ services:
   proxy:
     image: caddy:2.10-alpine
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:-localhost}
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required for production}
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -35,10 +51,6 @@ services:
       api: { condition: service_healthy }
       web: { condition: service_started }
     restart: unless-stopped
-  db:
-    deploy:
-      resources:
-        limits: { memory: 1G, cpus: "1.0" }
   redis:
     deploy:
       resources:

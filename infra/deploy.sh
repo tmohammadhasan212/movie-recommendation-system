@@ -8,6 +8,13 @@ if [ "${#image_sha}" -ne 40 ]; then
   echo "image SHA must contain exactly 40 characters" >&2
   exit 2
 fi
+if [ ! -f .env ]; then
+  echo "production .env file is required" >&2
+  exit 2
+fi
+set -a
+. ./.env
+set +a
 : "${GHCR_OWNER:?GHCR_OWNER is required}"
 : "${APP_DOMAIN:?APP_DOMAIN is required}"
 
@@ -19,6 +26,7 @@ compose() {
   docker-compose -f docker-compose.yml -f docker-compose.prod.yml "$@"
 }
 
+compose config --quiet
 compose pull api migrate worker scheduler web
 
 api_revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$RECSYS_API_IMAGE")"
@@ -27,6 +35,9 @@ if [ "$api_revision" != "$image_sha" ] || [ "$web_revision" != "$image_sha" ]; t
   echo "release image revision does not match requested Git SHA" >&2
   exit 1
 fi
+
+compose run --rm --no-deps migrate python -c \
+  'from backend.app.core.config import get_settings; get_settings()'
 
 mkdir -p backups
 docker-compose exec -T db pg_dump -U recsys -Fc recsys > "backups/recsys-$(date -u +%Y%m%dT%H%M%SZ).dump"

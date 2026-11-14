@@ -52,7 +52,8 @@ monitoring-up:
 	docker-compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 
 build:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+	docker build -f Dockerfile.api -t recsys-api:local .
+	docker build -f Dockerfile.web.prod -t recsys-web:local .
 
 smoke:
 	curl --fail --silent http://localhost:8000/health/live

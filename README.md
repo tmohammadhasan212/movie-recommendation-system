@@ -31,6 +31,8 @@ make smoke
 
 Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs` in development. Raw data, local manifests, secrets, and model binaries are ignored by Git. Poster enrichment is optional and never runs during startup or import. Each `make metadata-enrich` run refreshes at most 250 stale TMDB-linked movies; rerun it to continue through the catalog.
 
+Production uses a separate fail-closed configuration. Copy `.env.production.example` to the target host's ignored `.env`, replace every placeholder, and follow [the deployment guide](docs/deployment.md). Development defaults are rejected when `APP_ENV=production`.
+
 ## Stack versions
 
 Direct Python and npm dependencies are exactly pinned in `pyproject.toml`, `uv.lock`, `frontend/package.json`, and `frontend/package-lock.json`. Core observed versions include Python 3.12, FastAPI 0.162.7, SQLAlchemy 2.1.8, PyTorch 2.15.0, React 19.3.1, TypeScript 7.0.2, PostgreSQL 16, and Redis 7.
