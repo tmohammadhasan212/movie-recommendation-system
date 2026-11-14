@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.api.v1.catalog import MovieResponse
-from backend.app.core.cache import get as cache_get
+from backend.app.core.cache import get_or_reserve as cache_get_or_reserve
 from backend.app.core.cache import set_value as cache_set
 from backend.app.core.db import get_db, utcnow
 from backend.app.core.metrics import MODEL_LOAD_FAILURES, RECOMMENDATIONS
@@ -143,7 +143,8 @@ def recommendations(
             limit=limit,
             include_watchlist=False,
         )
-    if cached := cache_get(cache_key):
+    cached, reservation_token = cache_get_or_reserve(cache_key)
+    if cached:
         return RecommendationFeed.model_validate_json(cached)
     preferred: set[str] = set()
     seen: set[int] = set()
@@ -159,8 +160,11 @@ def recommendations(
             for genres in db.scalars(select(Movie.genres).where(Movie.id.in_(liked_ids))):
                 preferred.update(genres)
     candidates, movie_map, mean = _candidates(db)
-    bundle, fallback_reason = _active_bundle(db)
-    if bundle and ratings:
+    bundle: ModelBundle | None = None
+    fallback_reason: str | None = None
+    if ratings:
+        bundle, fallback_reason = _active_bundle(db)
+    if bundle:
         by_internal = {movie.id: movie.movielens_id for movie in movie_map.values()}
         positive = [(by_internal[row.movie_id], row.rating) for row in ratings if row.rating >= 4]
         negative = [(by_internal[row.movie_id], row.rating) for row in ratings if row.rating <= 2.5]
@@ -189,7 +193,7 @@ def recommendations(
             ]
             RECOMMENDATIONS.labels("hybrid_model", "none").inc()
             response = RecommendationFeed(items=items, model_version=bundle.version, fallback_reason="")
-            cache_set(cache_key, response.model_dump_json())
+            cache_set(cache_key, response.model_dump_json(), reservation_token)
             return response
         fallback_reason = "insufficient_positive_ratings"
     ranked = rank(candidates, global_mean=mean, preferred_genres=frozenset(preferred), seen_ids=frozenset(seen), limit=limit)
@@ -208,7 +212,7 @@ def recommendations(
         model_version=None,
         fallback_reason=reason,
     )
-    cache_set(cache_key, response.model_dump_json())
+    cache_set(cache_key, response.model_dump_json(), reservation_token)
     return response
 
 

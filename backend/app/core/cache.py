@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from time import time
+from time import sleep, time
+from uuid import uuid4
 
 import redis
 
@@ -21,20 +22,47 @@ def client() -> redis.Redis:
     )
 
 
-def get(key: str) -> str | None:
+def get_or_reserve(key: str, wait_seconds: float = 2.0) -> tuple[str | None, str | None]:
+    lock_key = f"{key}:lock"
+    token = uuid4().hex
     try:
-        value = client().get(key)
-        CACHE_REQUESTS.labels("recommendations", "hit" if value else "miss").inc()
-        return value
+        connection = client()
+        value = connection.get(key)
+        if value:
+            CACHE_REQUESTS.labels("recommendations", "hit").inc()
+            return value, None
+        CACHE_REQUESTS.labels("recommendations", "miss").inc()
+        if connection.set(lock_key, token, nx=True, ex=10):
+            return None, token
+        deadline = time() + wait_seconds
+        while time() < deadline:
+            sleep(0.02)
+            value = connection.get(key)
+            if value:
+                CACHE_REQUESTS.labels("recommendations", "coalesced_hit").inc()
+                return value, None
+        CACHE_REQUESTS.labels("recommendations", "coalescing_timeout").inc()
+        return None, None
     except redis.RedisError:
         CACHE_REQUESTS.labels("recommendations", "error").inc()
         REDIS_ERRORS.labels("get").inc()
-        return None
+        return None, None
 
 
-def set_value(key: str, value: str, ttl_seconds: int = 300) -> None:
+def set_value(
+    key: str, value: str, reservation_token: str | None, ttl_seconds: int = 300
+) -> None:
     try:
-        client().set(key, value, ex=ttl_seconds)
+        connection = client()
+        connection.set(key, value, ex=ttl_seconds)
+        if reservation_token:
+            connection.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                f"{key}:lock",
+                reservation_token,
+            )
     except redis.RedisError:
         CACHE_REQUESTS.labels("recommendations", "error").inc()
         REDIS_ERRORS.labels("set").inc()
