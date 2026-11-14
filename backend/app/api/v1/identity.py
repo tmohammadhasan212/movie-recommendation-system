@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.core.config import get_settings
-from backend.app.core.db import get_db, utcnow
+from backend.app.core.db import as_utc, get_db, utcnow
 from backend.app.core.models import (
     GenrePreference,
     IdempotencyRecord,
@@ -90,7 +90,7 @@ def current_session(request: Request, db: DB) -> LoginSession:
     if session_id is None:
         raise HTTPException(401, "Authentication required")
     session = db.get(LoginSession, session_id)
-    if session is None or session.revoked_at or session.expires_at <= utcnow():
+    if session is None or session.revoked_at or as_utc(session.expires_at) <= utcnow():
         raise HTTPException(401, "Authentication required")
     return session
 
@@ -150,7 +150,7 @@ def refresh(request: Request, response: Response, db: DB, x_csrf_token: Annotate
     except ValueError:
         raise HTTPException(401, "Authentication required") from None
     session = db.get(LoginSession, session_id)
-    if session is None or session.revoked_at or session.expires_at <= utcnow():
+    if session is None or session.revoked_at or as_utc(session.expires_at) <= utcnow():
         raise HTTPException(401, "Authentication required")
     if not hmac.compare_digest(hash_secret(raw), session.refresh_hash):
         session.revoked_at = utcnow()
@@ -200,7 +200,7 @@ def export_account(session: SessionDep, db: DB) -> dict[str, object]:
 @router.put("/me/password")
 def change_password(body: PasswordChange, session: CsrfSession, db: DB) -> dict[str, str]:
     enforce_rate_limit(f"password:{session.user_id}", "password", 5, 300)
-    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+    if utcnow() - as_utc(session.authenticated_at) > timedelta(minutes=15):
         raise HTTPException(403, "Sign in again before changing your password")
     user = db.get(User, session.user_id)
     if user is None or not password_valid(user.password_hash, body.current_password):
@@ -214,7 +214,7 @@ def change_password(body: PasswordChange, session: CsrfSession, db: DB) -> dict[
 @router.patch("/me", response_model=Profile)
 def change_email(body: EmailChange, session: CsrfSession, db: DB) -> Profile:
     enforce_rate_limit(f"profile:{session.user_id}", "profile", 5, 300)
-    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+    if utcnow() - as_utc(session.authenticated_at) > timedelta(minutes=15):
         raise HTTPException(403, "Sign in again before changing your email")
     user = db.get(User, session.user_id)
     if user is None or not password_valid(user.password_hash, body.current_password):
@@ -230,7 +230,7 @@ def change_email(body: EmailChange, session: CsrfSession, db: DB) -> Profile:
 
 @router.delete("/me", status_code=204)
 def delete_account(session: CsrfSession, db: DB) -> Response:
-    if utcnow() - session.authenticated_at > timedelta(minutes=15):
+    if utcnow() - as_utc(session.authenticated_at) > timedelta(minutes=15):
         raise HTTPException(403, "Sign in again before deleting your account")
     user = db.get(User, session.user_id)
     if user is None:

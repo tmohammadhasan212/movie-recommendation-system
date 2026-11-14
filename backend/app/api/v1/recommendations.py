@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from backend.app.api.v1.catalog import MovieResponse, movie_response
 from backend.app.core.cache import get_or_reserve as cache_get_or_reserve
 from backend.app.core.cache import set_value as cache_set
-from backend.app.core.db import get_db, utcnow
+from backend.app.core.db import as_utc, get_db, utcnow
 from backend.app.core.metrics import MODEL_LOAD_FAILURES, RECOMMENDATIONS
 from backend.app.core.models import (
     GenrePreference,
@@ -72,7 +72,7 @@ def _session(request: Request, db: Session) -> LoginSession | None:
     if session_id is None:
         return None
     session = db.get(LoginSession, session_id)
-    if session is None or session.revoked_at or session.expires_at <= utcnow():
+    if session is None or session.revoked_at or as_utc(session.expires_at) <= utcnow():
         return None
     return session
 

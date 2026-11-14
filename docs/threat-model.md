@@ -6,7 +6,7 @@
 | CSRF | SameSite cookies plus per-session double-submit token checked server-side | Origin checking could add defense in depth |
 | Account enumeration | Registration always returns a generic accepted response | Timing has not been formally tested |
 | Brute force | Atomic Redis-backed shared limits fail closed, expose bounded metrics, alert on outages, and return `Retry-After` | Fixed windows are coarser than sliding-window limits |
-| Broken object authorization | User ID comes only from the authenticated session | More negative API tests are needed |
+| Broken object authorization | User ID comes only from the authenticated session; default tests cover unauthenticated, forged, expired, revoked, CSRF, and cross-user interaction access | Coverage currently targets the existing user-owned resources; privileged roles do not exist |
 | Forged analytics | Event allowlist, CSRF, consent, bounded timestamps, server-selected user | No anonymous event ingestion |
 | Dependency compromise | Exact direct versions, resolved lockfiles, CI audit and secret scan | Container SBOM/signing not implemented |
 | Model poisoning/corruption | Training boundary excludes app users; artifact schema and SHA-256 validation; safetensors | Source archive is trusted after published MD5/operator SHA-256 |

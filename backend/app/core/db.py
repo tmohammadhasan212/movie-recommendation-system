@@ -11,6 +11,13 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def as_utc(value: datetime) -> datetime:
+    """Normalize persisted timestamps at boundaries where Python compares them."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 class Base(DeclarativeBase):
     pass
 
