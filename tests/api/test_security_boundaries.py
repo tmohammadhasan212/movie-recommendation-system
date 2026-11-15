@@ -180,6 +180,41 @@ def test_mutation_requires_the_current_sessions_csrf_token(
     assert missing.json()["message"] == "CSRF token required"
 
 
+@pytest.mark.parametrize(
+    "provenance",
+    [
+        {"Origin": "https://evil.example"},
+        {"Origin": "null"},
+        {"Referer": "https://evil.example/account"},
+        {"Sec-Fetch-Site": "cross-site"},
+    ],
+)
+def test_cross_origin_mutation_is_rejected_before_business_logic(
+    security_api: tuple[TestClient, sessionmaker[Session]],
+    provenance: dict[str, str],
+) -> None:
+    client, sessions = security_api
+    principal = create_principal(sessions, "origin-owner")
+    headers = {**authenticate(client, principal), **provenance}
+
+    response = client.delete("/api/v1/me/ratings/101", headers=headers)
+
+    assert response.status_code == 403
+    assert response.json()["message"] == "Cross-origin request rejected"
+
+
+def test_same_origin_mutation_is_allowed(
+    security_api: tuple[TestClient, sessionmaker[Session]],
+) -> None:
+    client, sessions = security_api
+    principal = create_principal(sessions, "same-origin-owner")
+    headers = {**authenticate(client, principal), "Origin": "http://testserver"}
+
+    response = client.delete("/api/v1/me/ratings/101", headers=headers)
+
+    assert response.status_code == 204
+
+
 def test_user_cannot_read_or_delete_another_users_interactions(
     security_api: tuple[TestClient, sessionmaker[Session]],
 ) -> None:

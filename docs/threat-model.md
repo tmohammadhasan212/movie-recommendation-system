@@ -3,7 +3,7 @@
 | Threat | Current control | Remaining limitation |
 |---|---|---|
 | Credential theft | Argon2id, HttpOnly cookies, short access lifetime, refresh rotation, session revocation, single-flight browser renewal | No password recovery flow; renewal coordination is scoped to one browser tab |
-| CSRF | SameSite cookies plus per-session double-submit token checked server-side | Origin checking could add defense in depth |
+| CSRF | SameSite cookies, per-session token verification, Fetch Metadata, and Origin/Referer authority checks | Origin-less requests remain supported for non-browser API clients and still require the CSRF token when authenticated |
 | Account enumeration | Registration always returns a generic accepted response | Timing has not been formally tested |
 | Brute force | Atomic Redis-backed shared limits fail closed, expose bounded metrics, alert on outages, and return `Retry-After` | Fixed windows are coarser than sliding-window limits |
 | Broken object authorization | User ID comes only from the authenticated session; default tests cover unauthenticated, forged, expired, revoked, CSRF, and cross-user interaction access | Coverage currently targets the existing user-owned resources; privileged roles do not exist |

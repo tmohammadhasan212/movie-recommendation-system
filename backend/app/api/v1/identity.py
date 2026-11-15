@@ -24,6 +24,7 @@ from backend.app.core.models import (
     WatchlistItem,
 )
 from backend.app.core.rate_limit import enforce_rate_limit
+from backend.app.core.request_security import require_same_origin
 from backend.app.modules.identity.security import (
     REFRESH_SECONDS,
     hash_secret,
@@ -99,6 +100,7 @@ SessionDep = Annotated[LoginSession, Depends(current_session)]
 
 
 def csrf_session(request: Request, session: SessionDep, x_csrf_token: Annotated[str | None, Header()] = None) -> LoginSession:
+    require_same_origin(request)
     if not x_csrf_token or not hmac.compare_digest(hash_secret(x_csrf_token), session.csrf_hash):
         raise HTTPException(403, "CSRF token required")
     return session
@@ -109,6 +111,7 @@ CsrfSession = Annotated[LoginSession, Depends(csrf_session)]
 
 @router.post("/auth/register", status_code=202)
 def register(credentials: Credentials, request: Request, db: DB) -> dict[str, str]:
+    require_same_origin(request)
     enforce_rate_limit(
         f"register:{hash_secret(request.client.host if request.client else 'unknown')}",
         "register",
@@ -126,6 +129,7 @@ def register(credentials: Credentials, request: Request, db: DB) -> dict[str, st
 
 @router.post("/auth/login")
 def login(credentials: Credentials, request: Request, response: Response, db: DB) -> dict[str, str]:
+    require_same_origin(request)
     client_hash = hash_secret(request.client.host if request.client else "unknown")
     enforce_rate_limit(
         f"login:{client_hash}:{hash_secret(credentials.email)}", "login", 10
@@ -144,6 +148,7 @@ def login(credentials: Credentials, request: Request, response: Response, db: DB
 
 @router.post("/auth/refresh")
 def refresh(request: Request, response: Response, db: DB, x_csrf_token: Annotated[str | None, Header()] = None) -> dict[str, str]:
+    require_same_origin(request)
     raw = request.cookies.get("refresh", "")
     try:
         session_id = uuid.UUID(raw.split(".", 1)[0])
