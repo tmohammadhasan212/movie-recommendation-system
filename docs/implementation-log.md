@@ -39,6 +39,10 @@ All entries below are observed repository history and local checks, not planned 
 33. `02e1b5d` — enforce API ownership boundaries in tests
 34. `51922ae` — reject cross-origin session requests
 35. `0e48bd2` — reduce account timing signals
+36. `f108278` — verify clean database bootstrap and schema parity
+37. `2e54476` — update hosted Actions and restore the security audit
+38. `023d906` — pin the published setup-uv release tag
+39. `908bab9` — use Docker Compose v2 on Ubuntu 26 hosted runners
 
 ## Observed gates on 2026-11-14
 
@@ -79,7 +83,10 @@ All entries below are observed repository history and local checks, not planned 
 - Prometheus found seven valid rules, scraped the API target as healthy, and evaluated every loaded rule successfully; Grafana reported its database healthy.
 - `npm audit --audit-level=high` found zero vulnerabilities. The Python production lock had no known vulnerabilities when audited with Python 3.12 and dependency resolution disabled.
 - Tracked secret-filename inspection found only the two committed example environment files.
+- GitHub Actions CI run `43725323834` passed both jobs on Ubuntu 26.04. The test job completed in 2m23s after running Ruff, 83 Python tests, six frontend tests, the production frontend build, clean migrations plus schema parity, Compose validation, production image builds, and revision-label checks.
+- The hosted audit reported no known Python or npm vulnerabilities and no secrets in the full Git history; Gitleaks produced a SARIF artifact with a “No leaks detected” result.
+- Release-images run `43725534896` verified the CI-tested revision and published the API and web images for `908bab930ce5dcf1a35de18968ea52581a082957` to GHCR.
 
 ## Remaining external gates
 
-GitHub-hosted workflows and their secret scan have not run, no VPS credentials were supplied, and no public deploy or rollback rehearsal occurred. Container/SBOM signing also remains external work.
+No VPS credentials were supplied, and no public deploy or rollback rehearsal occurred. Container/SBOM signing also remains external work.

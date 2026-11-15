@@ -67,6 +67,7 @@ The locally trained hybrid achieved Recall@10 `0.0490`, NDCG@10 `0.0248`, and ca
 - Docker API/web/worker/scheduler were healthy. Non-root production API/web images carried exact revision labels; API liveness/readiness and disabled production docs passed, and the web image served root and deep links with security headers.
 - Prometheus and Grafana were healthy; the API scrape target was `up`, and all seven alert rules parsed, loaded, and evaluated successfully.
 - `npm audit` found zero vulnerabilities; the Python production lock had no known vulnerabilities in the local advisory audit.
+- GitHub-hosted CI passed on Ubuntu 26.04, including tests, clean migrations, schema parity, production image builds, advisory audits, and a full-history Gitleaks scan with no leaks. The release workflow published both revision-labelled images to GHCR.
 
 Historical data import, model, restore, search-plan, and performance evidence is retained in [the implementation log](docs/implementation-log.md) and the linked evidence documents.
 
@@ -74,6 +75,6 @@ Historical data import, model, restore, search-plan, and performance evidence is
 
 On a 12-logical-CPU Apple Silicon host with Colima limited to 2 CPUs and 4 GiB RAM, one API process handled a five-minute mixed read test at 50 concurrent clients: 90,450 requests, 301.5 requests/second, no errors, 161.4 ms overall p95, 149.8 ms recommendation p95, and 170.2 ms search p95. A separate 50-way preconnected cold-cache burst had 233.4 ms p95 and no errors. The original uncached baseline was 20.2 requests/second with 2,483 ms p95; the measured bottleneck was repeated aggregation over 100,836 ratings. These are local development measurements, not an SLA or internet-scale claim. See [performance evidence](docs/performance.md) and the committed JSON reports.
 
-GitHub-hosted CI and secret-scanning jobs, a public VPS deployment, rollback rehearsal, and container/SBOM signing have not occurred. The production deployment therefore remains an opt-in demo design, not a production-grade or highly available service.
+A public VPS deployment, rollback rehearsal, and container/SBOM signing have not occurred. The production deployment therefore remains an opt-in demo design, not a production-grade or highly available service.
 
 Architecture, privacy, threat model, operations, and deployment notes are under [`docs/`](docs/).
