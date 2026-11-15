@@ -29,6 +29,16 @@ All entries below are observed repository history and local checks, not planned 
 23. `a962d45` — coalesce cold recommendation cache misses
 24. `a1f9dde` — record architecture, operations, and measured evidence
 25. `3291a46` — add optional TMDB poster enrichment
+26. `7d7af4f` — record poster enrichment verification
+27. `766571e` — support TMDB v3 API keys
+28. `1e73d6b` — bind releases to verified revisions
+29. `d64c3a2` — reject unsafe production defaults
+30. `9c86553` — renew expired browser sessions
+31. `3ac01e6` — add audited dead-letter replay
+32. `d9216bd` — expose rate-limit health metrics and alerts
+33. `02e1b5d` — enforce API ownership boundaries in tests
+34. `51922ae` — reject cross-origin session requests
+35. `0e48bd2` — reduce account timing signals
 
 ## Observed gates on 2026-11-14
 
@@ -58,6 +68,18 @@ All entries below are observed repository history and local checks, not planned 
 - `make smoke` passed liveness, readiness, Redis, and active-model checks.
 - Production images built; the web image served the `/credits` deep link with a CSP allowing only the configured TMDB image and logo hosts.
 
+## Release-candidate gates on 2026-11-15
+
+- Locked Python and npm dependency checks passed; Ruff, TypeScript, and the Vite production build passed.
+- Pytest reported 83 passed and one opt-in live-stack skip; Vitest reported six passed; the opt-in live API test reported one passed; Playwright reported two passed.
+- The full Compose stack rebuilt successfully. API liveness/readiness, Redis, active-model, worker, scheduler, and migration-job checks passed.
+- An isolated empty PostgreSQL instance replayed migrations `0001` through `0005` under production configuration. `alembic check` found no drift there or on the existing stack.
+- The release audit found that revision `0001` imported mutable application metadata. It now owns a frozen original-schema snapshot, preventing later revisions from colliding during clean installs; CI now checks both migration replay and schema parity.
+- Production API and web images ran as non-root users and carried the exact source-revision label. The API passed production liveness/readiness with `/docs` disabled; the web image served `/` and `/account` with its CSP and cache policy.
+- Prometheus found seven valid rules, scraped the API target as healthy, and evaluated every loaded rule successfully; Grafana reported its database healthy.
+- `npm audit --audit-level=high` found zero vulnerabilities. The Python production lock had no known vulnerabilities when audited with Python 3.12 and dependency resolution disabled.
+- Tracked secret-filename inspection found only the two committed example environment files.
+
 ## Remaining external gates
 
-GitHub-hosted workflows and their dependency/secret audits have not run, no VPS credentials were supplied, and no public deploy or rollback rehearsal occurred.
+GitHub-hosted workflows and their secret scan have not run, no VPS credentials were supplied, and no public deploy or rollback rehearsal occurred. Container/SBOM signing also remains external work.
