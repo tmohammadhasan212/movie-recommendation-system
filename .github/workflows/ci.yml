@@ -34,7 +34,7 @@ jobs:
           uv run alembic check
         env:
           DATABASE_URL: postgresql+psycopg://recsys:recsys@localhost:5432/recsys
-      - run: docker-compose config --quiet
+      - run: docker compose config --quiet
       - run: docker build --build-arg VCS_REF="$GITHUB_SHA" -f Dockerfile.api -t recsys-api:test .
       - run: docker build --build-arg VCS_REF="$GITHUB_SHA" -f Dockerfile.web.prod -t recsys-web:test .
       - name: Verify image revision labels
