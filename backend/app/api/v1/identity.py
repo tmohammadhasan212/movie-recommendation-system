@@ -33,6 +33,7 @@ from backend.app.modules.identity.security import (
     normalize_email,
     password_hash,
     password_valid,
+    password_valid_or_dummy,
     sign_access_token,
     verify_access_token,
 )
@@ -117,9 +118,12 @@ def register(credentials: Credentials, request: Request, db: DB) -> dict[str, st
         "register",
         5,
     )
-    exists = db.scalar(select(User.id).where(User.email == credentials.email, User.deleted_at.is_(None)))
+    candidate_hash = password_hash(credentials.password)
+    exists = db.scalar(
+        select(User.id).where(User.email == credentials.email, User.deleted_at.is_(None))
+    )
     if not exists:
-        db.add(User(email=credentials.email, password_hash=password_hash(credentials.password)))
+        db.add(User(email=credentials.email, password_hash=candidate_hash))
         try:
             db.commit()
         except IntegrityError:
@@ -135,7 +139,11 @@ def login(credentials: Credentials, request: Request, response: Response, db: DB
         f"login:{client_hash}:{hash_secret(credentials.email)}", "login", 10
     )
     user = db.scalar(select(User).where(User.email == credentials.email, User.deleted_at.is_(None)))
-    if user is None or not password_valid(user.password_hash, credentials.password):
+    password_matches = password_valid_or_dummy(
+        user.password_hash if user is not None else None,
+        credentials.password,
+    )
+    if user is None or not password_matches:
         raise HTTPException(401, "Invalid credentials")
     session = LoginSession(id=uuid.uuid4(), user_id=user.id, refresh_hash="", csrf_hash="", expires_at=utcnow() + timedelta(seconds=REFRESH_SECONDS))
     refresh, session.refresh_hash = new_refresh_token(session.id)

@@ -18,6 +18,10 @@ hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ACCESS_SECONDS = 15 * 60
 REFRESH_SECONDS = 30 * 24 * 60 * 60
+DUMMY_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=2$gwmgv7Wp4Ve2UWSxxah3JQ$"
+    "LVZEId9/jzk39Rd3cSlBVsG0uf+xOvloBIEIwWZfrhg"
+)
 
 
 def normalize_email(email: str) -> str:
@@ -40,6 +44,11 @@ def password_valid(stored: str, submitted: str) -> bool:
         return hasher.verify(stored, submitted)
     except VerifyMismatchError:
         return False
+
+
+def password_valid_or_dummy(stored: str | None, submitted: str) -> bool:
+    """Perform one Argon2 verification even when no account hash exists."""
+    return password_valid(stored or DUMMY_PASSWORD_HASH, submitted)
 
 
 def new_refresh_token(session_id: uuid.UUID) -> tuple[str, str]:
