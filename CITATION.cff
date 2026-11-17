@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata in this file."
+title: "RecSys: a reproducible, production-oriented movie recommendation system"
+type: software
+authors:
+  - family-names: "Talebi"
+    given-names: "Mohammad Hasan"
+repository-code: "https://github.com/tmohammadhasan212/movie-recommendation-system"
+license: MIT
+version: 0.1.0
+date-released: 2026-11-17
+keywords:
+  - recommender systems
+  - matrix factorization
+  - information retrieval
+  - MovieLens
+  - FastAPI
+  - PyTorch
+abstract: >-
+  A reproducible hybrid movie recommendation system that compares popularity,
+  genre-content, collaborative, and hybrid ranking strategies and serves them
+  through a secure, observable full-stack web application.
+preferred-citation:
+  type: software
+  authors:
+    - family-names: "Talebi"
+      given-names: "Mohammad Hasan"
+  title: "RecSys: a reproducible, production-oriented movie recommendation system"
+  version: 0.1.0
+  year: 2026
+  url: "https://github.com/tmohammadhasan212/movie-recommendation-system"

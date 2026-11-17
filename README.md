@@ -1,12 +1,30 @@
 # RecSys
 
+[![CI](https://github.com/tmohammadhasan212/movie-recommendation-system/actions/workflows/ci.yml/badge.svg)](https://github.com/tmohammadhasan212/movie-recommendation-system/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](frontend/package.json)
+
 RecSys is a production-oriented movie recommendation portfolio project. It runs a FastAPI modular monolith, PostgreSQL, Redis/Celery outbox processing, a responsive React catalog, verified MovieLens import, deterministic fallbacks, and an offline PyTorch model with checksum-verified publication.
+
+## Academic overview
+
+RecSys investigates whether a reproducible hybrid recommender can improve top-10 ranking quality over popularity, genre-content, and collaborative baselines while remaining useful for new users and safe to operate as a complete web system. The experiment uses a chronological leave-two-out split for 592 eligible MovieLens users and evaluates every held-out positive against the full eligible catalog.
+
+| Best model | Recall@10 | NDCG@10 | Catalog coverage@10 |
+|---|---:|---:|---:|
+| Hybrid matrix factorization + content + popularity | 0.0490 | 0.0248 | 0.0779 |
+
+The hybrid produced the best observed Recall@10 and NDCG@10, but the improvement is small, comes from a single development run, and is not presented as statistically significant or as online uplift. See the **[academic project brief](docs/academic-portfolio.md)** for the research framing, contributions, limitations, reproducibility checklist, and a ready-to-use CV description. Detailed methodology and all baselines are in the **[model report](docs/model.md)**.
+
+**Repository guide:** [architecture](docs/architecture.md) · [model and evaluation](docs/model.md) · [data provenance](docs/data.md) · [performance](docs/performance.md) · [security threat model](docs/threat-model.md) · [deployment](docs/deployment.md)
 
 ## Verified features
 
 - Checksum-verified, idempotent import of 9,742 movies and 100,836 ratings from MovieLens `ml-latest-small`
 - Catalog search, genre filtering, detail and similar-movie pages
-- Optional TMDB poster enrichment with lazy images and deterministic placeholders
+- Optional TMDB summaries, community ratings, and posters with lazy images and deterministic placeholders
+- Optional IMDb rating refresh from IMDb's official non-commercial dataset
 - Argon2id accounts, secure session rotation and renewal, CSRF, rate limits, export and deletion
 - Genres, ratings, watchlist, consented events, transactional outbox, idempotent worker, and audited dead-letter replay
 - Popularity/genre cold start plus a published matrix-factorization hybrid for app users
@@ -24,12 +42,16 @@ make data-download
 make data-import
 # Optional: set TMDB_API_TOKEN or TMDB_API_KEY in .env, then enrich a bounded batch.
 make metadata-enrich
+# Or finish all remaining TMDB-linked movies with checkpointed parallel batches.
+docker-compose run --rm api python -m backend.cli.enrich_metadata --all --limit 1000 --workers 8
+# Optional: refresh IMDb ratings for matched catalog IDs.
+make imdb-ratings-enrich
 make train
 make model-publish
 make smoke
 ```
 
-Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs` in development. Raw data, local manifests, secrets, and model binaries are ignored by Git. Poster enrichment is optional and never runs during startup or import. Each `make metadata-enrich` run refreshes at most 250 stale TMDB-linked movies; rerun it to continue through the catalog.
+Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs` in development. Raw data, local manifests, secrets, and model binaries are ignored by Git. Metadata enrichment is optional and never runs during startup or import. Each `make metadata-enrich` run refreshes at most 250 stale TMDB-linked movies; use `--all` for checkpointed batches that continue through the catalog. IMDb enrichment downloads the official ratings dataset only when explicitly invoked and matches it against stored IMDb IDs.
 
 Production uses a separate fail-closed configuration. Copy `.env.production.example` to the target host's ignored `.env`, replace every placeholder, and follow [the deployment guide](docs/deployment.md). Development defaults are rejected when `APP_ENV=production`.
 
@@ -52,7 +74,7 @@ The opt-in live API test runs with `LIVE_STACK=1 uv run pytest tests/integration
 
 ## Data rights
 
-This is a non-commercial demo. MovieLens data has separate terms from the MIT-licensed project source. GroupLens does not endorse this project. Optional poster paths and remotely served images come from TMDB under its separate API terms and attribution requirements. See [data provenance and rights](docs/data.md) and the in-app Credits page.
+This is a non-commercial demo. MovieLens data has separate terms from the MIT-licensed project source. GroupLens does not endorse this project. Optional summaries, ratings, poster paths, and remotely served images come from TMDB and IMDb under their separate terms and attribution requirements. See [data provenance and rights](docs/data.md) and the in-app Credits page.
 
 ## Recommendation evidence
 
