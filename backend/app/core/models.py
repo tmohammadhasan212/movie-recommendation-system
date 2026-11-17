@@ -59,13 +59,39 @@ class Movie(Base):
     genres: Mapped[list[str]] = mapped_column(JSONB, default=list)
     imdb_id: Mapped[str | None] = mapped_column(String(20))
     tmdb_id: Mapped[int | None] = mapped_column(Integer)
+    tmdb_collection_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    tmdb_collection_name: Mapped[str | None] = mapped_column(String(500))
     poster_path: Mapped[str | None] = mapped_column(String(200))
     poster_source: Mapped[str | None] = mapped_column(String(30))
     poster_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    overview: Mapped[str | None] = mapped_column(Text)
+    overview_source: Mapped[str | None] = mapped_column(String(30))
+    tmdb_rating: Mapped[float | None] = mapped_column(Float)
+    tmdb_vote_count: Mapped[int | None] = mapped_column(Integer)
+    tmdb_metadata_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    imdb_rating: Mapped[float | None] = mapped_column(Float)
+    imdb_vote_count: Mapped[int | None] = mapped_column(Integer)
+    imdb_rating_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     source: Mapped[str] = mapped_column(String(30), default="MovieLens")
     source_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (
+        CheckConstraint(
+            "tmdb_rating IS NULL OR (tmdb_rating >= 0 AND tmdb_rating <= 10)",
+            name="ck_movies_tmdb_rating",
+        ),
+        CheckConstraint(
+            "tmdb_vote_count IS NULL OR tmdb_vote_count >= 0",
+            name="ck_movies_tmdb_vote_count",
+        ),
+        CheckConstraint(
+            "imdb_rating IS NULL OR (imdb_rating >= 0 AND imdb_rating <= 10)",
+            name="ck_movies_imdb_rating",
+        ),
+        CheckConstraint(
+            "imdb_vote_count IS NULL OR imdb_vote_count >= 0",
+            name="ck_movies_imdb_vote_count",
+        ),
         Index("ix_movies_title_lower", func.lower(title)),
         Index(
             "ix_movies_title_trgm",

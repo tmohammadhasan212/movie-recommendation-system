@@ -2,6 +2,8 @@ from backend.app.modules.recommendations.service import (
     Candidate,
     genre_similarity,
     rank,
+    shrunk_correlation,
+    similarity_percentage,
     smoothed_popularity,
 )
 
@@ -27,3 +29,18 @@ def test_genre_cold_start_and_seen_filter() -> None:
 def test_similarity_handles_missing_genres() -> None:
     assert genre_similarity(frozenset(), frozenset({"Drama"})) == 0
     assert genre_similarity(frozenset({"Drama"}), frozenset({"Drama", "Comedy"})) == 0.5
+
+
+def test_similarity_percentage_excludes_popularity_and_supports_genre_fallback() -> None:
+    assert similarity_percentage(0.5) == 50
+    assert similarity_percentage(1.0, 1.0, 1.0) == 100
+    assert similarity_percentage(0.5, 0.75, 0.6) == 57
+    assert similarity_percentage(0.75, 0.25, 0.53, same_collection=True) == 86
+
+
+def test_co_rating_correlation_is_shrunk_for_low_support() -> None:
+    assert shrunk_correlation(None, 100) is None
+    assert shrunk_correlation(0.8, 1) is None
+    assert shrunk_correlation(-0.5, 100) == 0
+    assert shrunk_correlation(0.8, 10) == 0.4
+    assert shrunk_correlation(0.8, 90) == 0.72

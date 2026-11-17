@@ -109,6 +109,7 @@ def authenticate(client: TestClient, principal: Principal) -> dict[str, str]:
         ("GET", "/api/v1/me", None),
         ("GET", "/api/v1/me/ratings", None),
         ("GET", "/api/v1/me/watchlist", None),
+        ("GET", "/api/v1/me/watchlist/movies", None),
         ("PUT", "/api/v1/me/ratings/101", {"rating": 4.5}),
         ("DELETE", "/api/v1/me/watchlist/101", None),
     ],

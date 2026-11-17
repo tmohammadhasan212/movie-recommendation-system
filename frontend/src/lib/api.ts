@@ -6,6 +6,18 @@ export interface Movie {
   source: string;
   poster_url: string | null;
   poster_source: string | null;
+  summary: string | null;
+  summary_source: string | null;
+  ratings: ExternalRating[];
+}
+
+export interface ExternalRating {
+  source: 'IMDb' | 'TMDB';
+  score: number;
+  scale: 10;
+  vote_count: number | null;
+  url: string;
+  updated_at: string | null;
 }
 
 export interface MoviePage {
@@ -93,9 +105,12 @@ export const getMovie = (id: number): Promise<Movie> => request<Movie>(`/movies/
 export const getGenres = (): Promise<string[]> => request<string[]>('/genres');
 
 export interface Profile { id: string; email: string; profile_version: number; genres: string[] }
-export interface Recommendation { movie: Movie; source: string; explanation_code: string }
+export interface Recommendation { movie: Movie; source: string; explanation_code: string; similarity_percentage: number | null; similarity_basis: 'collection' | 'hybrid' | 'genre' | null }
 export interface RecommendationFeed { items: Recommendation[]; model_version: string | null; fallback_reason: string }
 export interface Rating { movie_id: number; rating: number }
+export type WatchlistSort = 'recent' | 'title' | 'year_desc' | 'rating_desc';
+export interface WatchlistMovie { movie: Movie; added_at: string }
+export interface WatchlistPage { items: WatchlistMovie[]; page: number; limit: number; total: number }
 
 export const register = (email: string, password: string): Promise<{ message: string }> => request('/auth/register', 'POST', { email, password });
 export const login = (email: string, password: string): Promise<{ message: string }> => request('/auth/login', 'POST', { email, password });
@@ -107,6 +122,11 @@ export const getRatings = (): Promise<Rating[]> => request('/me/ratings');
 export const setRating = (movieId: number, rating: number): Promise<Rating> => request(`/me/ratings/${movieId}`, 'PUT', { rating }, crypto.randomUUID());
 export const removeRating = (movieId: number): Promise<void> => request(`/me/ratings/${movieId}`, 'DELETE');
 export const getWatchlist = (): Promise<number[]> => request('/me/watchlist');
+export function getWatchlistMovies(genre: string, sort: WatchlistSort, page: number): Promise<WatchlistPage> {
+  const params = new URLSearchParams({ sort, page: String(page), limit: '20' });
+  if (genre) params.set('genre', genre);
+  return request<WatchlistPage>(`/me/watchlist/movies?${params}`);
+}
 export const addWatchlist = (movieId: number): Promise<void> => request(`/me/watchlist/${movieId}`, 'PUT');
 export const removeWatchlist = (movieId: number): Promise<void> => request(`/me/watchlist/${movieId}`, 'DELETE');
 export const getRecommendations = (): Promise<RecommendationFeed> => request('/recommendations');

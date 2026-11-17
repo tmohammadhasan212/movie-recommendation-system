@@ -3,7 +3,12 @@ import pytest
 
 from backend.app.api.v1.catalog import movie_response
 from backend.app.core.models import Movie
-from backend.app.modules.catalog.tmdb import TmdbClient, TmdbMetadataError, parse_poster_path
+from backend.app.modules.catalog.tmdb import (
+    TmdbClient,
+    TmdbMetadataError,
+    parse_movie_metadata,
+    parse_poster_path,
+)
 
 
 def test_parse_poster_path_rejects_mismatched_or_unsafe_metadata() -> None:
@@ -11,6 +16,32 @@ def test_parse_poster_path_rejects_mismatched_or_unsafe_metadata() -> None:
         parse_poster_path({"id": 2, "poster_path": "/safe.jpg"}, 1)
     with pytest.raises(TmdbMetadataError, match="invalid poster"):
         parse_poster_path({"id": 1, "poster_path": "https://example.com/a.jpg"}, 1)
+
+
+def test_parse_movie_metadata_validates_and_normalizes_fields() -> None:
+    metadata = parse_movie_metadata(
+        {
+            "id": 1,
+            "poster_path": "/safe.jpg",
+            "overview": "  A useful story.  ",
+            "vote_average": 7.25,
+            "vote_count": 123,
+            "belongs_to_collection": {"id": 263, "name": "The Dark Knight Collection"},
+        },
+        1,
+    )
+    assert metadata.poster_path == "/safe.jpg"
+    assert metadata.overview == "A useful story."
+    assert metadata.vote_average == 7.25
+    assert metadata.vote_count == 123
+    assert metadata.collection_id == 263
+    assert metadata.collection_name == "The Dark Knight Collection"
+
+    with pytest.raises(TmdbMetadataError, match="vote average"):
+        parse_movie_metadata(
+            {"id": 1, "poster_path": None, "overview": "", "vote_average": 11, "vote_count": 1},
+            1,
+        )
 
 
 def test_client_validates_configuration_and_fetches_poster() -> None:
@@ -102,10 +133,16 @@ def test_movie_response_exposes_only_a_valid_tmdb_poster_url() -> None:
         title="Example",
         release_year=2000,
         genres=["Drama"],
-        imdb_id=None,
+        imdb_id="0114709",
         tmdb_id=550,
         poster_path="/poster.jpg",
         poster_source="TMDB",
+        overview="An example story.",
+        overview_source="TMDB",
+        tmdb_rating=7.2,
+        tmdb_vote_count=50,
+        imdb_rating=8.1,
+        imdb_vote_count=100,
         active=True,
         source="MovieLens",
     )
@@ -113,6 +150,9 @@ def test_movie_response_exposes_only_a_valid_tmdb_poster_url() -> None:
     response = movie_response(movie)
     assert response.poster_url == "https://image.tmdb.org/t/p/w500/poster.jpg"
     assert response.poster_source == "TMDB"
+    assert response.summary == "An example story."
+    assert [rating.source for rating in response.ratings] == ["IMDb", "TMDB"]
+    assert response.ratings[0].url == "https://www.imdb.com/title/tt0114709/"
 
     movie.poster_path = "https://attacker.invalid/poster.jpg"
     assert movie_response(movie).poster_url is None

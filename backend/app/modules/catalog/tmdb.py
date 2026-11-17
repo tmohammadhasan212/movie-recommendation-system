@@ -1,10 +1,11 @@
-"""Small, explicit TMDB client for optional catalog poster enrichment."""
+"""Small, explicit TMDB client for optional catalog metadata enrichment."""
 
 from __future__ import annotations
 
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Self
 
 import httpx
@@ -14,6 +15,16 @@ POSTER_PATH = re.compile(r"^/[A-Za-z0-9_.-]{1,199}$")
 
 class TmdbMetadataError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class TmdbMovieMetadata:
+    poster_path: str | None
+    overview: str | None
+    vote_average: float | None
+    vote_count: int | None
+    collection_id: int | None
+    collection_name: str | None
 
 
 def _json_object(response: httpx.Response, description: str) -> dict[str, Any]:
@@ -35,6 +46,57 @@ def parse_poster_path(payload: dict[str, Any], expected_id: int) -> str | None:
     if not isinstance(path, str) or not POSTER_PATH.fullmatch(path):
         raise TmdbMetadataError("TMDB returned an invalid poster path")
     return path
+
+
+def parse_movie_metadata(payload: dict[str, Any], expected_id: int) -> TmdbMovieMetadata:
+    poster_path = parse_poster_path(payload, expected_id)
+    overview = payload.get("overview")
+    if overview is not None:
+        if not isinstance(overview, str) or len(overview) > 10_000:
+            raise TmdbMetadataError("TMDB returned an invalid movie overview")
+        overview = overview.strip() or None
+
+    vote_average = payload.get("vote_average")
+    if vote_average is not None:
+        if isinstance(vote_average, bool) or not isinstance(vote_average, (int, float)):
+            raise TmdbMetadataError("TMDB returned an invalid vote average")
+        vote_average = float(vote_average)
+        if not 0 <= vote_average <= 10:
+            raise TmdbMetadataError("TMDB returned an invalid vote average")
+
+    vote_count = payload.get("vote_count")
+    if vote_count is not None and (
+        isinstance(vote_count, bool) or not isinstance(vote_count, int) or vote_count < 0
+    ):
+        raise TmdbMetadataError("TMDB returned an invalid vote count")
+
+    collection = payload.get("belongs_to_collection")
+    collection_id = None
+    collection_name = None
+    if collection is not None:
+        if not isinstance(collection, dict):
+            raise TmdbMetadataError("TMDB returned invalid collection metadata")
+        collection_id = collection.get("id")
+        collection_name = collection.get("name")
+        if (
+            isinstance(collection_id, bool)
+            or not isinstance(collection_id, int)
+            or collection_id <= 0
+            or not isinstance(collection_name, str)
+            or not collection_name.strip()
+            or len(collection_name) > 500
+        ):
+            raise TmdbMetadataError("TMDB returned invalid collection metadata")
+        collection_name = collection_name.strip()
+
+    return TmdbMovieMetadata(
+        poster_path,
+        overview,
+        vote_average,
+        vote_count,
+        collection_id,
+        collection_name,
+    )
 
 
 class TmdbClient:
@@ -111,9 +173,13 @@ class TmdbClient:
                 f"TMDB_IMAGE_BASE_URL must match the current TMDB configuration: {expected}"
             )
 
-    def poster_path(self, tmdb_id: int) -> str | None:
+    def movie_metadata(self, tmdb_id: int) -> TmdbMovieMetadata | None:
         response = self._get(f"movie/{tmdb_id}?language=en-US")
         if response.status_code == 404:
             return None
         payload = _json_object(response, "movie")
-        return parse_poster_path(payload, tmdb_id)
+        return parse_movie_metadata(payload, tmdb_id)
+
+    def poster_path(self, tmdb_id: int) -> str | None:
+        metadata = self.movie_metadata(tmdb_id)
+        return metadata.poster_path if metadata else None

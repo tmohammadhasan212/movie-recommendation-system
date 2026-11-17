@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from backend.app.api.v1.catalog import MovieResponse, movie_response
 from backend.app.api.v1.identity import CsrfSession, SessionDep
 from backend.app.core.db import get_db
 from backend.app.core.models import (
@@ -45,6 +47,18 @@ class RatingOutput(BaseModel):
 
 class GenreInput(BaseModel):
     genres: list[str] = Field(max_length=20)
+
+
+class WatchlistMovieResponse(BaseModel):
+    movie: MovieResponse
+    added_at: datetime
+
+
+class WatchlistPage(BaseModel):
+    items: list[WatchlistMovieResponse]
+    page: int
+    limit: int
+    total: int
 
 
 def _active_movie(db: Session, movie_id: int) -> Movie:
@@ -138,6 +152,46 @@ def remove_watchlist(movie_id: int, session: CsrfSession, db: DB) -> Response:
 @router.get("/me/watchlist")
 def my_watchlist(session: SessionDep, db: DB, limit: int = Query(100, ge=1, le=100)) -> list[int]:
     return list(db.scalars(select(WatchlistItem.movie_id).where(WatchlistItem.user_id == session.user_id).order_by(WatchlistItem.created_at.desc()).limit(limit)))
+
+
+@router.get("/me/watchlist/movies", response_model=WatchlistPage)
+def my_watchlist_movies(
+    session: SessionDep,
+    db: DB,
+    genre: str | None = Query(None, max_length=60),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    sort: Literal["recent", "title", "year_desc", "rating_desc"] = "recent",
+) -> WatchlistPage:
+    statement = (
+        select(WatchlistItem, Movie)
+        .join(Movie, Movie.id == WatchlistItem.movie_id)
+        .where(WatchlistItem.user_id == session.user_id, Movie.active.is_(True))
+    )
+    if genre:
+        statement = statement.where(Movie.genres.contains([genre]))
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    ordering = {
+        "recent": (WatchlistItem.created_at.desc(), Movie.id.asc()),
+        "title": (Movie.title.asc(), Movie.id.asc()),
+        "year_desc": (Movie.release_year.desc().nullslast(), Movie.id.asc()),
+        "rating_desc": (
+            func.coalesce(Movie.imdb_rating, Movie.tmdb_rating).desc().nullslast(),
+            Movie.id.asc(),
+        ),
+    }
+    rows = db.execute(
+        statement.order_by(*ordering[sort]).offset((page - 1) * limit).limit(limit)
+    ).all()
+    return WatchlistPage(
+        items=[
+            WatchlistMovieResponse(movie=movie_response(movie), added_at=item.created_at)
+            for item, movie in rows
+        ],
+        page=page,
+        limit=limit,
+        total=total,
+    )
 
 
 @router.put("/me/genres")

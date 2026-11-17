@@ -10,10 +10,16 @@ The source has `movies.csv`, `links.csv`, `ratings.csv`, and `tags.csv`. The app
 
 The current archive has one duplicate TMDB ID affecting two rows. The import omits those optional IDs and records `ambiguous_tmdb_rows`; see [ADR 0002](decisions/0002-ambiguous-tmdb-links.md). Strict link parsing still rejects duplicate IDs by default.
 
-## Optional TMDB posters
+## Optional TMDB metadata
 
-Poster enrichment is disabled unless an operator supplies `TMDB_API_TOKEN` or `TMDB_API_KEY` and explicitly runs `make metadata-enrich`. The command selects at most 250 stale movies per run, validates TMDB's current secure image configuration, retrieves poster paths using the MovieLens-provided TMDB IDs, retries bounded transient failures, and records the source and refresh time. It stores only paths and timestamps in PostgreSQL; poster image files are served remotely from TMDB and are not downloaded into the repository or model artifacts. Missing, invalid, removed, or failed images retain the local typographic placeholder.
+TMDB enrichment is disabled unless an operator supplies `TMDB_API_TOKEN` or `TMDB_API_KEY` and explicitly runs `make metadata-enrich`. The command selects at most 250 stale movies per run, validates TMDB's current secure image configuration, retrieves the overview, community rating, vote count, and poster path using the MovieLens-provided TMDB ID, retries bounded transient failures, and records the source and refresh time. It stores only text, numeric metadata, paths, and timestamps in PostgreSQL; poster image files are served remotely from TMDB and are not downloaded into the repository or model artifacts. Missing, invalid, removed, or failed images retain the local typographic placeholder.
 
 TMDB permits its developer API for non-commercial use with attribution and requires its approved logo plus the notice shown on the in-app Credits page. Public or commercial operators must review the current [TMDB FAQ and attribution requirements](https://developer.themoviedb.org/docs/faq), [approved logo page](https://www.themoviedb.org/about/logos-attribution), and applicable API terms before enabling enrichment. This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+## Optional IMDb ratings
+
+`make imdb-ratings-enrich` explicitly downloads IMDb's `title.ratings.tsv.gz`, validates its structure and values, and matches rows to MovieLens-provided IMDb IDs. Ratings and vote counts are stored with a refresh timestamp; the dataset itself remains temporary. IMDb makes these datasets available for personal and non-commercial use only. Operators must review the current [IMDb non-commercial dataset terms](https://developer.imdb.com/non-commercial-datasets/) before running the command or deploying the resulting data. Each displayed rating links back to its IMDb title page.
+
+Rotten Tomatoes scores are not collected or displayed. They must not be scraped; adding them requires an approved, licensed source and a separate provenance review.
 
 Citation: Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. *ACM Transactions on Interactive Intelligent Systems*, 5(4), 19:1–19:19.

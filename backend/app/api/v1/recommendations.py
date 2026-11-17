@@ -30,6 +30,8 @@ from backend.app.modules.recommendations.service import (
     Candidate,
     genre_similarity,
     rank,
+    shrunk_correlation,
+    similarity_percentage,
     smoothed_popularity,
 )
 from backend.ml.serve import ModelBundle, app_user_scores, load_bundle, normalized
@@ -42,6 +44,8 @@ class RecommendationItem(BaseModel):
     movie: MovieResponse
     source: str
     explanation_code: str
+    similarity_percentage: int | None = None
+    similarity_basis: str | None = None
 
 
 class RecommendationFeed(BaseModel):
@@ -96,6 +100,39 @@ def _candidates(db: Session) -> tuple[list[Candidate], dict[int, Movie], float]:
         for movie in movies
     ]
     return candidates, {movie.id: movie for movie in movies}, global_mean
+
+
+def _co_rating_scores(db: Session, movielens_id: int) -> dict[int, float]:
+    source_ratings = (
+        select(
+            ImportedRating.source_user_id,
+            ImportedRating.rating.label("source_rating"),
+        )
+        .where(ImportedRating.movielens_id == movielens_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(
+            ImportedRating.movielens_id,
+            func.count(),
+            func.corr(source_ratings.c.source_rating, ImportedRating.rating),
+        )
+        .join(
+            source_ratings,
+            source_ratings.c.source_user_id == ImportedRating.source_user_id,
+        )
+        .where(ImportedRating.movielens_id != movielens_id)
+        .group_by(ImportedRating.movielens_id)
+    ).all()
+    scores: dict[int, float] = {}
+    for other_id, support, correlation in rows:
+        score = shrunk_correlation(
+            float(correlation) if correlation is not None else None,
+            int(support),
+        )
+        if score is not None:
+            scores[other_id] = score
+    return scores
 
 
 @lru_cache(maxsize=2)
@@ -223,34 +260,64 @@ def similar(movie_id: int, db: DB, limit: int = Query(12, ge=1, le=100)) -> Reco
         raise HTTPException(404, "Movie not found")
     candidates, movie_map, mean = _candidates(db)
     bundle, fallback_reason = _active_bundle(db)
-    scored = []
+    scored: list[tuple[float, int, int, str]] = []
     source_genres = frozenset(source.genres)
     source_embedding = bundle.index.get(source.movielens_id) if bundle else None
+    co_rating_scores = _co_rating_scores(db, source.movielens_id)
     for candidate in candidates:
         if candidate.movie_id == movie_id:
             continue
         overlap = genre_similarity(source_genres, candidate.genres)
         embedding_score = 0.0
+        embedding_available = False
         if bundle and source_embedding is not None:
             other_source_id = movie_map[candidate.movie_id].movielens_id
             other_embedding = bundle.index.get(other_source_id)
             if other_embedding is not None:
+                embedding_available = True
                 left, right = bundle.embeddings[source_embedding], bundle.embeddings[other_embedding]
                 denominator = float(np.linalg.norm(left) * np.linalg.norm(right))
                 embedding_score = max(0.0, float(left @ right) / denominator) if denominator else 0.0
-        if overlap or embedding_score:
+        other_movie = movie_map[candidate.movie_id]
+        co_rating_score = co_rating_scores.get(other_movie.movielens_id)
+        same_collection = (
+            source.tmdb_collection_id is not None
+            and source.tmdb_collection_id == other_movie.tmdb_collection_id
+        )
+        if overlap or embedding_score or co_rating_score or same_collection:
             popularity = smoothed_popularity(candidate.rating_sum, candidate.rating_count, mean) / 5
-            scored.append((0.55 * overlap + 0.35 * embedding_score + 0.1 * popularity, candidate.movie_id))
+            percentage = similarity_percentage(
+                overlap,
+                embedding_score if embedding_available else None,
+                co_rating_score,
+                same_collection=same_collection,
+            )
+            rank_score = 0.9 * percentage / 100 + 0.1 * popularity
+            if same_collection:
+                basis = "collection"
+            elif co_rating_score is not None or embedding_available:
+                basis = "hybrid"
+            else:
+                basis = "genre"
+            scored.append(
+                (
+                    rank_score,
+                    candidate.movie_id,
+                    percentage,
+                    basis,
+                )
+            )
     scored.sort(key=lambda row: (-row[0], row[1]))
-    source_name = "hybrid_similarity" if bundle else "genre_similarity"
     return RecommendationFeed(
         items=[
             RecommendationItem(
                 movie=movie_response(movie_map[other_id]),
-                source=source_name,
+                source=f"{basis}_similarity",
                 explanation_code="shared_genres",
+                similarity_percentage=percentage,
+                similarity_basis=basis,
             )
-            for _, other_id in scored[:limit]
+            for _, other_id, percentage, basis in scored[:limit]
         ],
         model_version=bundle.version if bundle else None,
         fallback_reason=fallback_reason or "",

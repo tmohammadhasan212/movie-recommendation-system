@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 PRIOR_COUNT = 20
 MIN_POPULARITY_SUPPORT = 5
+SIMILAR_GENRE_WEIGHT = 0.55
+SIMILAR_EMBEDDING_WEIGHT = 0.35
+CO_RATING_PRIOR = 10
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,35 @@ def genre_similarity(left: frozenset[str], right: frozenset[str]) -> float:
     if not left or not right:
         return 0.0
     return len(left & right) / len(left | right)
+
+
+def shrunk_correlation(correlation: float | None, support: int) -> float | None:
+    if correlation is None or support < 2:
+        return None
+    correlation = min(1.0, max(0.0, correlation))
+    return correlation * support / (support + CO_RATING_PRIOR)
+
+
+def similarity_percentage(
+    genre_score: float,
+    embedding_score: float | None = None,
+    co_rating_score: float | None = None,
+    *,
+    same_collection: bool = False,
+) -> int:
+    """Blend available similarity evidence without popularity influencing the value."""
+    genre_score = min(1.0, max(0.0, genre_score))
+    signals = [(0.5, genre_score)]
+    if co_rating_score is not None:
+        signals.append((0.35, min(1.0, max(0.0, co_rating_score))))
+    if embedding_score is not None:
+        signals.append((0.15, min(1.0, max(0.0, embedding_score))))
+    base = sum(weight * score for weight, score in signals) / sum(
+        weight for weight, _ in signals
+    )
+    if same_collection:
+        base = 0.65 + 0.35 * base
+    return round(min(1.0, max(0.0, base)) * 100)
 
 
 def rank(

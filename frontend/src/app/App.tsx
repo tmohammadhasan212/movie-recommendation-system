@@ -1,16 +1,18 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { MoviePoster } from '../components/MoviePoster';
 import { addWatchlist, getGenres, getMovie, getMovies, getRatings, getSimilar, getWatchlist, removeRating, removeWatchlist, setRating, type Movie } from '../lib/api';
 import { AccountPage, AuthPage, GenresPage, useProfile } from '../features/account';
 import { RecommendationsPage } from '../features/recommendations';
+import { WatchlistPage } from '../features/watchlist';
 
 function MovieCard({ movie }: { movie: Movie }) {
+  const rating = movie.ratings?.[0];
   return <article className="movie-card">
     <Link to={`/movies/${movie.id}`} aria-label={`View ${movie.title}`}>
       <MoviePoster movie={movie} />
-      <div className="card-copy"><h3>{movie.title}</h3><p>{movie.release_year ?? 'Year unknown'}</p>
+      <div className="card-copy"><h3>{movie.title}</h3><p>{movie.release_year ?? 'Year unknown'}{rating ? ` · ${rating.source} ${rating.score.toFixed(1)}` : ''}</p>
         <div className="chips">{movie.genres.slice(0, 2).map(genre => <span key={genre}>{genre}</span>)}</div>
       </div>
     </Link>
@@ -18,13 +20,22 @@ function MovieCard({ movie }: { movie: Movie }) {
 }
 
 function Discovery() {
-  const [draft, setDraft] = useState('');
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q')?.trim() ?? '';
+  const [draft, setDraft] = useState(query);
   const [genre, setGenre] = useState('');
   const [page, setPage] = useState(1);
   const movies = useQuery({ queryKey: ['movies', query, genre, page], queryFn: () => getMovies(query, genre, page) });
   const genres = useQuery({ queryKey: ['genres'], queryFn: getGenres });
-  function search(event: FormEvent) { event.preventDefault(); setPage(1); setQuery(draft.trim()); }
+  useEffect(() => { setDraft(query); setPage(1); }, [query]);
+  function search(event: FormEvent) {
+    event.preventDefault();
+    const next = new URLSearchParams(searchParams);
+    const value = draft.trim();
+    if (value) next.set('q', value); else next.delete('q');
+    setSearchParams(next);
+    setPage(1);
+  }
   return <>
     <section className="hero"><p className="eyebrow">Explore the catalog</p><h1>Find your next <em>movie night.</em></h1>
       <p>Browse real MovieLens titles. Personalized suggestions are coming as the project grows.</p>
@@ -51,8 +62,13 @@ function Detail() {
   return <main className="container detail"><Link className="back" to="/">← Back to discovery</Link>
     {movie.isLoading && <p role="status">Loading movie…</p>}
     {movie.isError && <p role="alert">Could not load this movie: {movie.error.message}</p>}
-    {movie.data && <><div className="detail-layout"><MoviePoster movie={movie.data} size="large" /><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p className="metadata-note">{movie.data.poster_source === 'TMDB' ? 'Poster metadata is provided by TMDB. MovieLens provides the title, year, and genres.' : 'MovieLens provides titles and genres. Poster enrichment is not available for this movie.'}</p><MovieActions movieId={movie.data.id} /></div></div><SimilarMovies movieId={movie.data.id} /></>}
+    {movie.data && <><div className="detail-layout"><MoviePoster movie={movie.data} size="large" /><div><p className="eyebrow">{movie.data.source} catalog</p><h1>{movie.data.title}</h1><p>{movie.data.release_year ?? 'Release year unknown'}</p><div className="chips">{movie.data.genres.map(genre => <span key={genre}>{genre}</span>)}</div><MovieRatings movie={movie.data} />{movie.data.summary ? <section className="movie-summary"><h2>Story</h2><p>{movie.data.summary}</p><small>Summary provided by {movie.data.summary_source}.</small></section> : <p className="metadata-note">A story summary is not available for this movie yet.</p>}<p className="metadata-note">{movie.data.poster_source === 'TMDB' ? 'Poster metadata is provided by TMDB. MovieLens provides the title, year, and genres.' : 'MovieLens provides titles and genres. Poster enrichment is not available for this movie.'}</p><MovieActions movieId={movie.data.id} /></div></div><SimilarMovies movieId={movie.data.id} /></>}
   </main>;
+}
+
+function MovieRatings({ movie }: { movie: Movie }) {
+  if (!movie.ratings?.length) return <p className="metadata-note">External ratings are not available yet.</p>;
+  return <section className="external-ratings" aria-label="External ratings">{movie.ratings.map(rating => <a key={rating.source} href={rating.url} target="_blank" rel="noreferrer"><strong>{rating.score.toFixed(1)}</strong><span>/ {rating.scale}</span><small>{rating.source}{rating.vote_count === null ? '' : ` · ${rating.vote_count.toLocaleString()} votes`}</small></a>)}</section>;
 }
 
 function MovieActions({ movieId }: { movieId: number }) {
@@ -69,8 +85,22 @@ function MovieActions({ movieId }: { movieId: number }) {
   return <div className="movie-actions"><label>Your rating <select value={rating} disabled={updateRating.isPending} onChange={event => { setError(''); updateRating.mutate(Number(event.target.value)); }}><option value={0}>Not rated</option>{Array.from({ length: 10 }, (_, index) => (index + 1) / 2).map(value => <option value={value} key={value}>{value} stars</option>)}</select></label><button disabled={updateWatchlist.isPending} onClick={() => { setError(''); updateWatchlist.mutate(); }}>{saved ? 'Remove from watchlist' : 'Add to watchlist'}</button>{error && <p role="alert" className="form-error">{error}</p>}</div>;
 }
 
-function SimilarMovies({ movieId }: { movieId: number }) { const similar = useQuery({ queryKey: ['similar', movieId], queryFn: () => getSimilar(movieId) }); return <section className="similar"><h2>Similar movies</h2>{similar.isLoading && <p role="status">Loading similar movies…</p>}{similar.isError && <p role="alert">Similar movies are unavailable.</p>}<div className="similar-list">{similar.data?.items.map(item => <Link key={item.movie.id} to={`/movies/${item.movie.id}`}><MoviePoster movie={item.movie} size="thumb" /><span>{item.movie.title}</span></Link>)}</div></section>; }
+function SimilarMovies({ movieId }: { movieId: number }) { const similar = useQuery({ queryKey: ['similar', movieId], queryFn: () => getSimilar(movieId) }); return <section className="similar"><h2>Similar movies</h2>{similar.isLoading && <p role="status">Loading similar movies…</p>}{similar.isError && <p role="alert">Similar movies are unavailable.</p>}<div className="similar-list">{similar.data?.items.map(item => <Link key={item.movie.id} to={`/movies/${item.movie.id}`}><MoviePoster movie={item.movie} size="thumb" /><span className="similar-copy"><span>{item.movie.title}</span><small className="similar-score">{item.similarity_percentage ?? 0}% match</small></span></Link>)}</div></section>; }
 
-function Credits() { return <main className="container prose"><p className="eyebrow">Attribution</p><h1>Credits & data</h1><p>This non-commercial demo uses the MovieLens ml-latest-small dataset from GroupLens Research at the University of Minnesota. MovieLens data has separate terms from this project's source code. GroupLens does not endorse this project.</p><p>Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems, 5(4), 19:1–19:19.</p><p><a href="https://grouplens.org/datasets/movielens/latest/">Dataset information and terms</a></p><section className="tmdb-credit"><a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer"><img src="https://www.themoviedb.org/assets/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" /></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>When enabled by the operator, poster paths and images are provided by TMDB. No TMDB image files are stored in this repository.</p><p><a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noreferrer">TMDB attribution and logo terms</a></p></section></main>; }
+function Credits() { return <main className="container prose"><p className="eyebrow">Attribution</p><h1>Credits & data</h1><p>This non-commercial demo uses the MovieLens ml-latest-small dataset from GroupLens Research at the University of Minnesota. MovieLens data has separate terms from this project's source code. GroupLens does not endorse this project.</p><p>Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets: History and Context. ACM Transactions on Interactive Intelligent Systems, 5(4), 19:1–19:19.</p><p><a href="https://grouplens.org/datasets/movielens/latest/">Dataset information and terms</a></p><section className="tmdb-credit"><a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer"><img src="https://www.themoviedb.org/assets/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg" alt="TMDB" /></a><p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p><p>When enabled by the operator, poster paths, summaries, images, and TMDB community ratings are provided by TMDB. No TMDB image files are stored in this repository.</p><p><a href="https://www.themoviedb.org/about/logos-attribution" target="_blank" rel="noreferrer">TMDB attribution and logo terms</a></p></section><section className="tmdb-credit"><h2>IMDb ratings</h2><p>IMDb ratings are refreshed from IMDb's non-commercial datasets and link to the corresponding IMDb title page. IMDb and the IMDb logo are trademarks of IMDb.com, Inc. or its affiliates.</p><p><a href="https://developer.imdb.com/non-commercial-datasets/" target="_blank" rel="noreferrer">IMDb non-commercial dataset terms</a></p></section></main>; }
 
-export default function App() { return <><header className="site-header"><div className="container header-inner"><Link className="brand" to="/">recsys<span>✦</span></Link><nav aria-label="Main navigation"><NavLink to="/">Discover</NavLink><NavLink to="/for-you">For you</NavLink><NavLink to="/credits">Credits</NavLink><NavLink to="/account">Account</NavLink></nav></div></header><Routes><Route path="/" element={<Discovery />} /><Route path="/movies/:id" element={<Detail />} /><Route path="/for-you" element={<RecommendationsPage />} /><Route path="/genres" element={<GenresPage />} /><Route path="/auth" element={<AuthPage />} /><Route path="/account" element={<AccountPage />} /><Route path="/credits" element={<Credits />} /></Routes><footer className="site-footer"><div className="container">A non-commercial MovieLens demo · <Link to="/credits">Data credits</Link></div></footer></>; }
+function HeaderSearch() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const currentQuery = location.pathname === '/' ? new URLSearchParams(location.search).get('q') ?? '' : '';
+  const [value, setValue] = useState(currentQuery);
+  useEffect(() => setValue(currentQuery), [currentQuery]);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const query = value.trim();
+    navigate(query ? `/?${new URLSearchParams({ q: query })}` : '/');
+  }
+  return <form className="header-search" role="search" onSubmit={submit}><label className="sr-only" htmlFor="header-movie-search">Search movies</label><input id="header-movie-search" type="search" value={value} onChange={event => setValue(event.target.value)} placeholder="Search movies" maxLength={100} /><button type="submit">Search</button></form>;
+}
+
+export default function App() { return <><header className="site-header"><div className="container header-inner"><Link className="brand" to="/">recsys<span>✦</span></Link><HeaderSearch /><nav aria-label="Main navigation"><NavLink end to="/">Discover</NavLink><NavLink to="/for-you">For you</NavLink><NavLink to="/watchlist">Watchlist</NavLink><NavLink to="/credits">Credits</NavLink><NavLink to="/account">Account</NavLink></nav></div></header><Routes><Route path="/" element={<Discovery />} /><Route path="/movies/:id" element={<Detail />} /><Route path="/for-you" element={<RecommendationsPage />} /><Route path="/watchlist" element={<WatchlistPage />} /><Route path="/genres" element={<GenresPage />} /><Route path="/auth" element={<AuthPage />} /><Route path="/account" element={<AccountPage />} /><Route path="/credits" element={<Credits />} /></Routes><footer className="site-footer"><div className="container">A non-commercial MovieLens demo · <Link to="/credits">Data credits</Link></div></footer></>; }

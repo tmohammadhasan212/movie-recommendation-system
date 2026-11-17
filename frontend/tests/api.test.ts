@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { getMe, getMovies, login } from '../src/lib/api';
+import { getMe, getMovies, getWatchlistMovies, login } from '../src/lib/api';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -20,6 +20,15 @@ test('catalog client encodes filters and uses same-origin credentials', async ()
 test('catalog client exposes API errors', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ message: 'Database unavailable' }) }));
   await expect(getMovies('', '', 1)).rejects.toThrow('Database unavailable');
+});
+
+test('watchlist client sends pagination, sorting, and genre filters', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(response(200, { items: [], page: 2, limit: 20, total: 0 }));
+  vi.stubGlobal('fetch', fetchMock);
+
+  await getWatchlistMovies('Drama', 'rating_desc', 2);
+
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/me/watchlist/movies?sort=rating_desc&page=2&limit=20&genre=Drama');
 });
 
 test('expired access is refreshed and retried with the rotated CSRF token', async () => {

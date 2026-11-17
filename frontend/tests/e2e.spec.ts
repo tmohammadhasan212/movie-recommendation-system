@@ -8,6 +8,16 @@ test('credits display the required TMDB attribution', async ({ page }) => {
   await expect(page.getByText('This product uses the TMDB API but is not endorsed or certified by TMDB.')).toBeVisible();
 });
 
+test('header search finds movies from every page', async ({ page }) => {
+  await page.goto('/credits');
+  await page.getByRole('searchbox', { name: 'Search movies' }).fill('Toy Story');
+  await page.locator('.header-search').getByRole('button', { name: 'Search' }).click();
+
+  await expect(page).toHaveURL(/\?q=Toy\+Story/);
+  await expect(page.locator('.movie-card').getByRole('heading', { name: /Toy Story/ }).first()).toBeVisible();
+  await expect(page.getByPlaceholder('Search by title')).toHaveValue('Toy Story');
+});
+
 test('registered user can renew, personalize, rate, save, sign back in, and delete account', async ({ page, context }) => {
   const email = `browser-${Date.now()}@example.test`;
   const password = 'correct horse battery staple';
@@ -32,11 +42,15 @@ test('registered user can renew, personalize, rate, save, sign back in, and dele
   await expect(page).toHaveURL(/for-you/);
   await page.goto('/');
   await page.getByPlaceholder('Search by title').fill('Toy Story');
-  await page.getByRole('button', { name: 'Search' }).click();
+  await page.locator('.search').getByRole('button', { name: 'Search' }).click();
   await page.locator('.movie-card a').first().click();
+  await expect(page.locator('.similar-score').first()).toContainText(/\d+% match/);
   await page.getByLabel('Your rating').selectOption('4.5');
   await page.getByRole('button', { name: 'Add to watchlist' }).click();
   await expect(page.getByRole('button', { name: 'Remove from watchlist' })).toBeVisible();
+  await page.getByRole('link', { name: 'Watchlist' }).click();
+  await expect(page.getByRole('heading', { name: 'Your watchlist' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Toy Story/ }).first()).toBeVisible();
 
   await page.goto('/account');
   await page.getByRole('button', { name: 'Sign out' }).click();

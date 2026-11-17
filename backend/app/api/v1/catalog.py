@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,6 +16,15 @@ router = APIRouter(tags=["catalog"])
 DB = Annotated[Session, Depends(get_db)]
 
 
+class ExternalRating(BaseModel):
+    source: Literal["IMDb", "TMDB"]
+    score: float
+    scale: int = 10
+    vote_count: int | None
+    url: str
+    updated_at: datetime | None
+
+
 class MovieResponse(BaseModel):
     id: int
     title: str
@@ -23,6 +33,9 @@ class MovieResponse(BaseModel):
     source: str
     poster_url: str | None
     poster_source: str | None
+    summary: str | None
+    summary_source: str | None
+    ratings: list[ExternalRating]
 
     model_config = {"from_attributes": True}
 
@@ -34,6 +47,27 @@ def movie_response(movie: Movie) -> MovieResponse:
     poster_url = None
     if movie.poster_source == "TMDB" and movie.poster_path and POSTER_PATH.fullmatch(movie.poster_path):
         poster_url = f"{get_settings().tmdb_image_base_url.rstrip('/')}{movie.poster_path}"
+    ratings: list[ExternalRating] = []
+    if movie.imdb_rating is not None and movie.imdb_id and movie.imdb_id.isdigit():
+        ratings.append(
+            ExternalRating(
+                source="IMDb",
+                score=movie.imdb_rating,
+                vote_count=movie.imdb_vote_count,
+                url=f"https://www.imdb.com/title/tt{movie.imdb_id}/",
+                updated_at=movie.imdb_rating_updated_at,
+            )
+        )
+    if movie.tmdb_rating is not None and movie.tmdb_id is not None and movie.tmdb_id > 0:
+        ratings.append(
+            ExternalRating(
+                source="TMDB",
+                score=movie.tmdb_rating,
+                vote_count=movie.tmdb_vote_count,
+                url=f"https://www.themoviedb.org/movie/{movie.tmdb_id}",
+                updated_at=movie.tmdb_metadata_updated_at,
+            )
+        )
     return MovieResponse(
         id=movie.id,
         title=movie.title,
@@ -42,6 +76,9 @@ def movie_response(movie: Movie) -> MovieResponse:
         source=movie.source,
         poster_url=poster_url,
         poster_source=movie.poster_source if poster_url else None,
+        summary=movie.overview,
+        summary_source=movie.overview_source if movie.overview else None,
+        ratings=ratings,
     )
 
 
